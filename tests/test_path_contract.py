@@ -9,15 +9,16 @@ from repro.path_contract import (
 )
 
 
-@pytest.mark.parametrize("relative", (".cache", "runs"))
+@pytest.mark.parametrize("relative", (".cache", ".cache/control", "runs"))
 def test_runtime_roots_reject_directory_symlinks(
     tmp_path: Path,
     relative: str,
 ):
     root = tmp_path / "repo"
     root.mkdir()
-    outside = tmp_path / f"outside-{relative.removeprefix('.')}"
+    outside = tmp_path / f"outside-{relative.removeprefix('.').replace('/', '-')}"
     outside.mkdir()
+    (root / relative).parent.mkdir(parents=True, exist_ok=True)
     (root / relative).symlink_to(outside, target_is_directory=True)
 
     with pytest.raises(RuntimeError, match="not a real directory"):
@@ -62,6 +63,20 @@ def test_runtime_wheel_symlink_is_rejected(tmp_path: Path):
     outside = tmp_path / "outside.whl"
     outside.write_bytes(b"wheel")
     (root / "wheels" / "shadow.whl").symlink_to(outside)
+
+    with pytest.raises(RuntimeError, match="not a regular file"):
+        ensure_runtime_paths(root)
+
+
+def test_locked_requirements_symlink_is_rejected(tmp_path: Path):
+    root = tmp_path / "repo"
+    root.mkdir()
+    ensure_runtime_paths(root)
+    outside = tmp_path / "outside-requirements.txt"
+    outside.write_text("outside\n", encoding="utf-8")
+    (
+        root / ".cache" / "control" / "uv-lock-requirements.txt"
+    ).symlink_to(outside)
 
     with pytest.raises(RuntimeError, match="not a regular file"):
         ensure_runtime_paths(root)

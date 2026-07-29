@@ -6,11 +6,14 @@ VENV="${ROOT}/.venv"
 UV_BOOTSTRAP="${ROOT}/.cache/uv-bootstrap"
 UV_BIN="${UV_BOOTSTRAP}/bin/uv"
 UV_VERSION="0.9.27"
-WHEELHOUSE_EXPECTED_COUNT="51"
+WHEELHOUSE_EXPECTED_COUNT="52"
+UV_WHEEL="${ROOT}/wheels/uv-0.9.27-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl"
+UV_WHEEL_SHA256="79939f7e92d707fb84933509df747d1b88b00d94ebe41f3a1e30916cc33c7307"
 REQUESTS_WHEEL="${ROOT}/wheels/requests-2.34.2-py3-none-any.whl"
 REQUESTS_WHEEL_SHA256="2a0d60c172f83ac6ab31e4554906c0f3b3588d37b5cb939b1c061f4907e278e0"
 CAUSAL_WHEEL="${ROOT}/wheels/causal_conv1d-1.5.3.post1+cu12torch2.7cxx11abiTRUE-cp310-cp310-linux_x86_64.whl"
 CAUSAL_WHEEL_SHA256="3a60ede12aa2bcd0e0cd435956bb65a9d85260381c9d99ea4c45551e3174b894"
+LOCKED_REQUIREMENTS="${ROOT}/.cache/control/uv-lock-requirements.txt"
 cd "${ROOT}"
 
 PYTHONDONTWRITEBYTECODE=1 python3 "${ROOT}/repro/path_contract.py" \
@@ -37,6 +40,7 @@ mkdir -p \
   "${TORCH_EXTENSIONS_DIR}" \
   "${CUDA_CACHE_PATH}" \
   "${TMPDIR}" \
+  "${ROOT}/.cache/control" \
   "${ROOT}/artifacts" \
   "${ROOT}/checkpoints" \
   "${ROOT}/data" \
@@ -46,6 +50,23 @@ mkdir -p \
   "${ROOT}/wandb" \
   "${ROOT}/wheels"
 
+WHEELHOUSE_ACTUAL_COUNT="$(
+  find "${ROOT}/wheels" -maxdepth 1 -type f -name '*.whl' | wc -l | tr -d ' '
+)"
+if [[ "${WHEELHOUSE_ACTUAL_COUNT}" != "${WHEELHOUSE_EXPECTED_COUNT}" ]]; then
+  echo "incomplete locked wheelhouse: expected=${WHEELHOUSE_EXPECTED_COUNT} actual=${WHEELHOUSE_ACTUAL_COUNT}" >&2
+  exit 1
+fi
+for wheel in "${UV_WHEEL}" "${REQUESTS_WHEEL}" "${CAUSAL_WHEEL}"; do
+  if [[ ! -f "${wheel}" ]]; then
+    echo "missing locally supplied locked wheel: ${wheel}" >&2
+    exit 1
+  fi
+done
+printf '%s  %s\n' "${UV_WHEEL_SHA256}" "${UV_WHEEL}" | sha256sum --check -
+printf '%s  %s\n' "${REQUESTS_WHEEL_SHA256}" "${REQUESTS_WHEEL}" | sha256sum --check -
+printf '%s  %s\n' "${CAUSAL_WHEEL_SHA256}" "${CAUSAL_WHEEL}" | sha256sum --check -
+
 if [[ ! -x "${UV_BIN}" ]]; then
   if [[ "${1:-}" == "--check" ]]; then
     echo "project-local pinned uv is missing: ${UV_BIN}" >&2
@@ -53,8 +74,10 @@ if [[ ! -x "${UV_BIN}" ]]; then
   else
     /opt/conda/bin/python -m venv --system-site-packages "${UV_BOOTSTRAP}"
     "${UV_BOOTSTRAP}/bin/python" -m pip install \
+      --no-index \
+      --no-deps \
       --no-cache-dir \
-      "uv==${UV_VERSION}"
+      "${UV_WHEEL}"
   fi
 fi
 UV_ACTUAL="$("${UV_BIN}" --version)"
@@ -66,14 +89,6 @@ if [[
   exit 1
 fi
 
-WHEELHOUSE_ACTUAL_COUNT="$(
-  find "${ROOT}/wheels" -maxdepth 1 -type f -name '*.whl' | wc -l | tr -d ' '
-)"
-if [[ "${WHEELHOUSE_ACTUAL_COUNT}" != "${WHEELHOUSE_EXPECTED_COUNT}" ]]; then
-  echo "incomplete locked wheelhouse: expected=${WHEELHOUSE_EXPECTED_COUNT} actual=${WHEELHOUSE_ACTUAL_COUNT}" >&2
-  exit 1
-fi
-
 if [[ "${1:-}" != "--check" ]]; then
   if [[ ! -x "${VENV}/bin/python" ]]; then
     "${UV_BIN}" venv \
@@ -81,24 +96,28 @@ if [[ "${1:-}" != "--check" ]]; then
       --system-site-packages \
       "${VENV}"
   fi
-  if [[ ! -f "${REQUESTS_WHEEL}" ]]; then
-    echo "missing locally supplied locked wheel: ${REQUESTS_WHEEL}" >&2
-    exit 1
-  fi
-  printf '%s  %s\n' "${REQUESTS_WHEEL_SHA256}" "${REQUESTS_WHEEL}" | sha256sum --check -
-  "${UV_BIN}" sync \
+  LOCKED_REQUIREMENTS_TMP="$(
+    mktemp "${ROOT}/.cache/control/uv-lock-requirements.XXXXXX"
+  )"
+  trap 'rm -f -- "${LOCKED_REQUIREMENTS_TMP}"' EXIT
+  "${UV_BIN}" export \
     --frozen \
     --offline \
-    --no-install-project \
+    --all-extras \
+    --no-emit-project \
+    --format requirements-txt \
+    --output-file "${LOCKED_REQUIREMENTS_TMP}"
+  mv -f -- "${LOCKED_REQUIREMENTS_TMP}" "${LOCKED_REQUIREMENTS}"
+  trap - EXIT
+  "${UV_BIN}" pip sync \
+    --python "${VENV}/bin/python" \
+    --require-hashes \
+    --offline \
+    --no-cache \
+    --no-index \
+    --only-binary :all: \
     --find-links "${ROOT}/wheels" \
-    --extra build \
-    --extra test
-
-  if [[ ! -f "${CAUSAL_WHEEL}" ]]; then
-    echo "missing locally supplied locked wheel: ${CAUSAL_WHEEL}" >&2
-    exit 1
-  fi
-  printf '%s  %s\n' "${CAUSAL_WHEEL_SHA256}" "${CAUSAL_WHEEL}" | sha256sum --check -
+    "${LOCKED_REQUIREMENTS}"
   "${UV_BIN}" pip install \
     --python "${VENV}/bin/python" \
     --no-build-isolation \
@@ -114,7 +133,7 @@ else
     --frozen \
     --offline \
     --no-install-project \
-    --find-links "${ROOT}/wheels" \
+    --inexact \
     --check \
     --extra build \
     --extra test

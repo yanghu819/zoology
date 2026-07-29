@@ -290,6 +290,14 @@ def test_all_persistent_paths_are_project_local():
 
 def test_setup_uses_hash_checked_local_wheels_offline():
     setup = (ROOT / "setup.sh").read_text(encoding="utf-8")
+    assert (
+        "uv-0.9.27-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl"
+        in setup
+    )
+    assert (
+        "79939f7e92d707fb84933509df747d1b88b00d94ebe41f3a1e30916cc33c7307"
+        in setup
+    )
     assert "requests-2.34.2-py3-none-any.whl" in setup
     assert (
         "2a0d60c172f83ac6ab31e4554906c0f3b3588d37b5cb939b1c061f4907e278e0"
@@ -301,9 +309,15 @@ def test_setup_uses_hash_checked_local_wheels_offline():
         in setup
     )
     assert "--offline" in setup
+    assert "--no-cache" in setup
+    assert "--no-index" in setup
+    assert "--only-binary :all:" in setup
     assert "--find-links" in setup
+    assert "--require-hashes" in setup
     assert "--no-install-project" in setup
-    assert 'WHEELHOUSE_EXPECTED_COUNT="51"' in setup
+    assert "--inexact" in setup
+    assert 'WHEELHOUSE_EXPECTED_COUNT="52"' in setup
+    assert '"uv==${UV_VERSION}"' not in setup
     assert "curl " not in setup
 
 

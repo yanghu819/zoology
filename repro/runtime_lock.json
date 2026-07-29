@@ -4,6 +4,8 @@
   "remote_root": "/huyang2/zoology",
   "python_prefix": "3.10.",
   "uv": "0.9.27",
+  "uv_bootstrap_wheel": "uv-0.9.27-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+  "uv_bootstrap_wheel_sha256": "79939f7e92d707fb84933509df747d1b88b00d94ebe41f3a1e30916cc33c7307",
   "torch": "2.7.0+cu126",
   "torchvision": "0.22.0+cu126",
   "triton": "3.3.0",
