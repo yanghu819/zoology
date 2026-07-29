@@ -6,6 +6,7 @@ VENV="${ROOT}/.venv"
 UV_BOOTSTRAP="${ROOT}/.cache/uv-bootstrap"
 UV_BIN="${UV_BOOTSTRAP}/bin/uv"
 UV_VERSION="0.9.27"
+WHEELHOUSE_EXPECTED_COUNT="51"
 REQUESTS_WHEEL="${ROOT}/wheels/requests-2.34.2-py3-none-any.whl"
 REQUESTS_WHEEL_SHA256="2a0d60c172f83ac6ab31e4554906c0f3b3588d37b5cb939b1c061f4907e278e0"
 CAUSAL_WHEEL="${ROOT}/wheels/causal_conv1d-1.5.3.post1+cu12torch2.7cxx11abiTRUE-cp310-cp310-linux_x86_64.whl"
@@ -62,6 +63,14 @@ if [[
   "${UV_ACTUAL}" != "uv ${UV_VERSION} "*
 ]]; then
   echo "uv version mismatch: expected=${UV_VERSION} actual=${UV_ACTUAL}" >&2
+  exit 1
+fi
+
+WHEELHOUSE_ACTUAL_COUNT="$(
+  find "${ROOT}/wheels" -maxdepth 1 -type f -name '*.whl' | wc -l | tr -d ' '
+)"
+if [[ "${WHEELHOUSE_ACTUAL_COUNT}" != "${WHEELHOUSE_EXPECTED_COUNT}" ]]; then
+  echo "incomplete locked wheelhouse: expected=${WHEELHOUSE_EXPECTED_COUNT} actual=${WHEELHOUSE_ACTUAL_COUNT}" >&2
   exit 1
 fi
 

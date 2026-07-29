@@ -303,6 +303,7 @@ def test_setup_uses_hash_checked_local_wheels_offline():
     assert "--offline" in setup
     assert "--find-links" in setup
     assert "--no-install-project" in setup
+    assert 'WHEELHOUSE_EXPECTED_COUNT="51"' in setup
     assert "curl " not in setup
 
 

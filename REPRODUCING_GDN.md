@@ -46,9 +46,10 @@ export ZOOLOGY_REMAINING_OBSERVED_UNIX="<Unix second when status was read>"
 ```
 
 `setup.sh` creates a project-local uv environment, checks it against the frozen
-uv lock, consumes hash-checked local `requests` and causal-conv1d wheels without
-remote package downloads, and checks the exact runtime. The project itself is
-imported from the frozen
+uv lock, requires the complete 51-file Linux CPython 3.10 wheelhouse, consumes
+hash-checked local `requests` and causal-conv1d wheels without remote package
+downloads, and checks the exact runtime. The remaining dependency wheels stay
+bound by `uv.lock`. The project itself is imported from the frozen
 checkout rather than rebuilt as an editable wheel on the slow shared
 filesystem. Before setup, download, or execution, a
 shared path gate rejects symlinked runtime roots and untracked or ignored

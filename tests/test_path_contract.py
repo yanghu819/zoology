@@ -55,6 +55,18 @@ def test_runtime_environment_symlink_is_rejected(tmp_path: Path):
         ensure_runtime_paths(root)
 
 
+def test_runtime_wheel_symlink_is_rejected(tmp_path: Path):
+    root = tmp_path / "repo"
+    root.mkdir()
+    ensure_runtime_paths(root)
+    outside = tmp_path / "outside.whl"
+    outside.write_bytes(b"wheel")
+    (root / "wheels" / "shadow.whl").symlink_to(outside)
+
+    with pytest.raises(RuntimeError, match="not a regular file"):
+        ensure_runtime_paths(root)
+
+
 def _make_source_repo(tmp_path: Path) -> Path:
     root = tmp_path / "repo"
     (root / "repro").mkdir(parents=True)

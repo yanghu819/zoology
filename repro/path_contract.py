@@ -205,6 +205,8 @@ def ensure_runtime_paths(
 
     for relative in RUNTIME_FILES:
         _require_regular_if_present(root / relative)
+    for wheel in (root / "wheels").glob("*.whl"):
+        _require_regular_if_present(wheel)
     return root
 
 
