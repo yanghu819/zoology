@@ -4,6 +4,11 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${ROOT}"
 
+PYTHONDONTWRITEBYTECODE=1 python3 "${ROOT}/repro/path_contract.py" \
+  --root "${ROOT}" \
+  --require-environments \
+  --validate-source
+
 export UV_CACHE_DIR="${ROOT}/.cache/uv"
 export XDG_CACHE_HOME="${ROOT}/.cache/xdg"
 export XDG_CONFIG_HOME="${ROOT}/.cache/xdg-config"
@@ -13,6 +18,7 @@ export TORCH_EXTENSIONS_DIR="${ROOT}/.cache/torch-extensions"
 export TRITON_CACHE_DIR="${ROOT}/.cache/triton"
 export HF_HOME="${ROOT}/.cache/huggingface"
 export TMPDIR="${ROOT}/.cache/tmp"
+export PYTHONPYCACHEPREFIX="${ROOT}/.cache/pycache"
 export ZOOLOGY_DATA_CACHE="${ROOT}/data/mqar-cache"
 export PYTHONPATH="${ROOT}/vendor/flash-linear-attention:${ROOT}"
 
@@ -25,7 +31,6 @@ mkdir -p \
   "${TORCH_EXTENSIONS_DIR}" \
   "${TRITON_CACHE_DIR}" \
   "${HF_HOME}" \
-  "${TMPDIR}" \
-  "${ZOOLOGY_DATA_CACHE}"
+  "${TMPDIR}"
 
 "${ROOT}/.venv/bin/python" -m repro.prewarm_cache

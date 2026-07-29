@@ -6,6 +6,11 @@ MODE="${1:-}"
 EXPECTED_SHA="${ZOOLOGY_EXPECTED_GIT_SHA:-}"
 cd "${ROOT}"
 
+PYTHONDONTWRITEBYTECODE=1 python3 "${ROOT}/repro/path_contract.py" \
+  --root "${ROOT}" \
+  --require-environments \
+  --validate-source
+
 export UV_CACHE_DIR="${ROOT}/.cache/uv"
 export XDG_CACHE_HOME="${ROOT}/.cache/xdg"
 export XDG_CONFIG_HOME="${ROOT}/.cache/xdg-config"
@@ -24,6 +29,7 @@ export WANDB_DATA_DIR="${ROOT}/.cache/wandb-data"
 export WANDB_ARTIFACT_DIR="${ROOT}/artifacts/wandb"
 export CUDA_CACHE_PATH="${ROOT}/.cache/cuda"
 export TMPDIR="${ROOT}/.cache/tmp"
+export PYTHONPYCACHEPREFIX="${ROOT}/.cache/pycache"
 export ZOOLOGY_DATA_CACHE="${ROOT}/data/mqar-cache"
 export PYTHONPATH="${ROOT}/vendor/flash-linear-attention:${ROOT}"
 export CUDA_VISIBLE_DEVICES="0"
@@ -62,14 +68,82 @@ require_source_contract() {
     echo "formal execution requires detached HEAD" >&2
     return 1
   fi
-  if [[ -n "$(git -C "${ROOT}" status --porcelain --untracked-files=no)" ]]; then
-    echo "formal execution requires a clean tracked worktree" >&2
+  if [[ -n "$(git -C "${ROOT}" status --porcelain)" ]]; then
+    echo "formal execution requires a clean worktree, including untracked source" >&2
     return 1
   fi
   [[ "${AISTATION_TARGET:-}" == "GPU2" ]] || {
     echo "AISTATION_TARGET must be the literal GPU2" >&2
     return 1
   }
+}
+
+resolve_suite_dir() {
+  local suite_dir
+  suite_dir="$(realpath -m "${1:?suite directory is required}")"
+  if [[
+    "${suite_dir}" == "${ROOT}/runs" ||
+    "${suite_dir}" != "${ROOT}/runs/"*
+  ]]; then
+    echo "suite directory must be a child of ${ROOT}/runs" >&2
+    return 1
+  fi
+  printf '%s\n' "${suite_dir}"
+}
+
+require_cell_admission() {
+  local remaining_seconds observed_unix minimum_seconds
+  require_cell_admission_inputs
+  remaining_seconds="${ZOOLOGY_REMAINING_SECONDS}"
+  observed_unix="${ZOOLOGY_REMAINING_OBSERVED_UNIX}"
+  minimum_seconds="${ZOOLOGY_MIN_REMAINING_SECONDS:-11460}"
+  "${ROOT}/.venv/bin/python" -m repro.suite_contract admit \
+    --remaining-seconds "${remaining_seconds}" \
+    --observed-unix "${observed_unix}" \
+    --minimum-seconds "${minimum_seconds}"
+}
+
+require_cell_admission_inputs() {
+  if [[ -z "${ZOOLOGY_REMAINING_SECONDS:-}" ]]; then
+    echo "set ZOOLOGY_REMAINING_SECONDS from a fresh AIStation status response" >&2
+    return 1
+  fi
+  if [[ -z "${ZOOLOGY_REMAINING_OBSERVED_UNIX:-}" ]]; then
+    echo "set ZOOLOGY_REMAINING_OBSERVED_UNIX when remainTime is observed" >&2
+    return 1
+  fi
+}
+
+format_cell_index() {
+  local raw_index decimal_index
+  raw_index="${1:?cell index is required}"
+  if [[ ! "${raw_index}" =~ ^[0-9]+$ ]]; then
+    echo "cell index must be an integer in [0, 11], got ${raw_index}" >&2
+    return 1
+  fi
+  decimal_index="$((10#${raw_index}))"
+  if (( decimal_index < 0 || decimal_index > 11 )); then
+    echo "cell index must be in [0, 11], got ${raw_index}" >&2
+    return 1
+  fi
+  printf '%02d\n' "${decimal_index}"
+}
+
+finalize_cell_worker() {
+  local worker_exit="$?"
+  local status_exit
+  trap - EXIT
+  set +e
+  "${ROOT}/.venv/bin/python" -m repro.cell_launcher terminal \
+    --launch-dir "${LAUNCH_DIR}" \
+    --index "${INDEX}" \
+    --worker-pid "$$" \
+    --exit-code "${worker_exit}"
+  status_exit="$?"
+  if (( status_exit != 0 && worker_exit == 0 )); then
+    worker_exit=74
+  fi
+  exit "${worker_exit}"
 }
 
 case "${MODE}" in
@@ -87,37 +161,122 @@ case "${MODE}" in
   run-one)
     require_source_contract
     INDEX="${2:?run-one requires an index 0..11}"
-    SUITE_DIR="$(realpath -m "${3:?run-one requires a suite directory}")"
-    if [[ "${SUITE_DIR}" == "${ROOT}/runs" || "${SUITE_DIR}" != "${ROOT}/runs/"* ]]; then
-      echo "suite directory must be a child of ${ROOT}/runs" >&2
-      exit 1
-    fi
+    INDEX="$((10#$(format_cell_index "${INDEX}")))"
+    SUITE_DIR="$(resolve_suite_dir "${3:?run-one requires a suite directory}")"
+    "${ROOT}/setup.sh" --check
+    "${ROOT}/.venv/bin/python" -m repro.suite_contract prepare-cell \
+      --index "${INDEX}" \
+      --suite-dir "${SUITE_DIR}"
+    require_cell_admission
+    CELL_ID="$(format_cell_index "${INDEX}")"
+    CLAIM_PATH="${SUITE_DIR}/claims/run-${CELL_ID}"
+    mkdir "${CLAIM_PATH}"
+    export ZOOLOGY_RUNTIME_ATTESTATION_PATH="${CLAIM_PATH}/runtime-attestation.json"
+    "${ROOT}/.venv/bin/python" -m repro.runtime_attestation capture \
+      --output "${ZOOLOGY_RUNTIME_ATTESTATION_PATH}"
+    "${ROOT}/.venv/bin/python" -m repro.runtime_attestation compare \
+      --baseline "${SUITE_DIR}/runtime-attestation.json" \
+      --candidate "${ZOOLOGY_RUNTIME_ATTESTATION_PATH}"
+    LOG_PATH="${SUITE_DIR}/logs/run-${CELL_ID}.log"
+    printf 'cell=%s log=%s\n' "${INDEX}" "${LOG_PATH}"
     /usr/bin/timeout --signal=TERM --kill-after=60s 10800s \
       "${ROOT}/.venv/bin/python" -m repro.run_one \
       --index "${INDEX}" \
-      --suite-dir "${SUITE_DIR}"
+      --suite-dir "${SUITE_DIR}" \
+      > "${LOG_PATH}" 2>&1
     ;;
-  full)
+  init-suite)
     require_source_contract
+    "${ROOT}/setup.sh" --check
     "${ROOT}/down.sh"
-    SUITE_ID="gdn-mqar-official-$(date -u +%Y%m%dT%H%M%SZ)-${EXPECTED_SHA:0:12}"
-    SUITE_DIR="${ROOT}/runs/${SUITE_ID}"
-    mkdir -p "${SUITE_DIR}/logs"
+    if [[ -n "${2:-}" ]]; then
+      SUITE_DIR="$(resolve_suite_dir "${2}")"
+    else
+      SUITE_ID="gdn-mqar-official-$(date -u +%Y%m%dT%H%M%SZ)-${EXPECTED_SHA:0:12}"
+      SUITE_DIR="${ROOT}/runs/${SUITE_ID}"
+    fi
+    mkdir "${SUITE_DIR}"
+    mkdir "${SUITE_DIR}/logs"
+    mkdir "${SUITE_DIR}/claims"
+    mkdir "${SUITE_DIR}/launches"
     git -C "${ROOT}" archive HEAD | gzip -n > "${SUITE_DIR}/source.tar.gz"
     sha256sum "${SUITE_DIR}/source.tar.gz" > "${SUITE_DIR}/source.tar.gz.sha256"
     cp "${ZOOLOGY_DATA_CACHE}/manifest.json" "${SUITE_DIR}/cache-manifest.json"
     sha256sum "${SUITE_DIR}/cache-manifest.json" \
       > "${SUITE_DIR}/cache-manifest.json.sha256"
     nvidia-smi -q > "${SUITE_DIR}/nvidia-smi.txt"
-    for index in $(seq 0 11); do
-      "${ROOT}/run.sh" run-one "${index}" "${SUITE_DIR}" \
-        > "${SUITE_DIR}/logs/run-$(printf '%02d' "${index}").log" 2>&1
+    "${ROOT}/.venv/bin/python" -m repro.runtime_attestation capture \
+      --output "${SUITE_DIR}/runtime-attestation.json"
+    "${ROOT}/.venv/bin/python" -m repro.suite_contract initialize \
+      --suite-dir "${SUITE_DIR}"
+    printf 'suite_dir=%s\n' "${SUITE_DIR}"
+    ;;
+  resume)
+    require_source_contract
+    SUITE_DIR="$(resolve_suite_dir "${2:?resume requires a suite directory}")"
+    INDEX="$(
+      "${ROOT}/.venv/bin/python" -m repro.suite_contract next-index \
+        --suite-dir "${SUITE_DIR}"
+    )"
+    if [[ "${INDEX}" == "complete" ]]; then
+      printf 'suite_complete=%s\n' "${SUITE_DIR}"
+      exit 0
+    fi
+    require_cell_admission
+    "${ROOT}/.venv/bin/python" -m repro.cell_launcher launch \
+      --root "${ROOT}" \
+      --index "${INDEX}" \
+      --suite-dir "${SUITE_DIR}"
+    ;;
+  _cell-worker)
+    INDEX="${2:?internal cell worker requires an index}"
+    INDEX="$((10#$(format_cell_index "${INDEX}")))"
+    CELL_ID="$(format_cell_index "${INDEX}")"
+    SUITE_DIR="$(resolve_suite_dir "${3:?internal cell worker requires a suite directory}")"
+    LAUNCH_DIR="$(realpath -m "${4:?internal cell worker requires a launch directory}")"
+    if [[ "${LAUNCH_DIR}" != "${SUITE_DIR}/launches/run-${CELL_ID}" ]]; then
+      echo "worker launch directory does not match suite/index" >&2
+      exit 1
+    fi
+    trap finalize_cell_worker EXIT
+    for _ in $(seq 1 100); do
+      if [[ -f "${LAUNCH_DIR}/launch.json" && -f "${LAUNCH_DIR}/worker.pid" ]]; then
+        break
+      fi
+      sleep 0.1
     done
+    if [[ ! -f "${LAUNCH_DIR}/launch.json" || ! -f "${LAUNCH_DIR}/worker.pid" ]]; then
+      echo "launcher handshake did not complete" >&2
+      exit 70
+    fi
+    "${ROOT}/.venv/bin/python" -m repro.cell_launcher verify-worker \
+      --launch-dir "${LAUNCH_DIR}" \
+      --suite-dir "${SUITE_DIR}" \
+      --index "${INDEX}" \
+      --worker-pid "$$"
+    require_source_contract
+    "${ROOT}/run.sh" run-one "${INDEX}" "${SUITE_DIR}"
+    "${ROOT}/.venv/bin/python" -m repro.suite_contract validate-artifacts \
+      --index "${INDEX}" \
+      --suite-dir "${SUITE_DIR}"
+    ;;
+  aggregate)
+    require_source_contract
+    SUITE_DIR="$(resolve_suite_dir "${2:?aggregate requires a suite directory}")"
+    "${ROOT}/.venv/bin/python" -m repro.suite_contract assert-complete \
+      --suite-dir "${SUITE_DIR}"
     "${ROOT}/.venv/bin/python" -m repro.aggregate --suite-dir "${SUITE_DIR}"
     printf 'suite_dir=%s\n' "${SUITE_DIR}"
     ;;
+  full)
+    echo "full is disabled on expiring AIStation sessions" >&2
+    echo "use init-suite, then refresh remainTime and call resume once per cell" >&2
+    echo "after all 12 validated cells, call aggregate" >&2
+    exit 2
+    ;;
   *)
-    echo "usage: $0 {check|cache|smoke|run-one INDEX SUITE_DIR|full}" >&2
+    echo "usage: $0 {check|cache|smoke|init-suite [SUITE_DIR]|resume SUITE_DIR|" >&2
+    echo "          run-one INDEX SUITE_DIR|aggregate SUITE_DIR}" >&2
     exit 2
     ;;
 esac

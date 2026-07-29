@@ -16,6 +16,7 @@ from zoology.utils import set_determinism
 from repro.cache_contract import (
     OFFICIAL_CONFIG_SHA256,
     cache_files,
+    ensure_frozen_cache_directory,
     sha256_file,
     validate_manifest,
 )
@@ -24,8 +25,9 @@ from repro.configs.gdn_mqar_official import configs
 
 def main() -> None:
     config = configs[0]
-    cache_dir = Path(config.data.cache_dir)
-    cache_dir.mkdir(parents=True, exist_ok=True)
+    cache_dir = ensure_frozen_cache_directory()
+    if cache_dir != Path(config.data.cache_dir):
+        raise RuntimeError("frozen config/cache directory contract drifted")
     manifest_path = cache_dir / "manifest.json"
     existing_files = cache_files(cache_dir)
     if manifest_path.exists():
@@ -50,7 +52,7 @@ def main() -> None:
     manifest = {
         "schema_version": 1,
         "origin": "generated_by_frozen_prewarm",
-        "cache_dir": str(cache_dir.resolve()),
+        "cache_dir": str(cache_dir),
         "official_config_sha256": OFFICIAL_CONFIG_SHA256,
         "generation_seed": int(config.seed),
         "torch_version": torch.__version__,

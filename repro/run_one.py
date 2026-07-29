@@ -15,6 +15,7 @@ import zoology.train as train_module
 from repro.cache_contract import sha256_file, validate_manifest
 from repro.configs.gdn_mqar_official import configs
 from repro.local_logger import LocalArtifactLogger
+from repro.suite_contract import require_suite_location
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -36,7 +37,7 @@ def main() -> None:
     if not 0 <= args.index < len(configs):
         raise ValueError(f"index must be in [0, {len(configs) - 1}]")
     config = configs[args.index]
-    suite_dir = args.suite_dir.resolve()
+    suite_dir = require_suite_location(args.suite_dir)
     run_dir = suite_dir / (
         f"{args.index:02d}__d{config.model.d_model}"
         f"__lr{float(config.learning_rate):.10g}"
@@ -51,6 +52,25 @@ def main() -> None:
     cache_dir = Path(config.data.cache_dir).resolve()
     validate_manifest(cache_dir)
     cache_manifest_path = cache_dir / "manifest.json"
+    runtime_attestation_path = Path(
+        os.environ["ZOOLOGY_RUNTIME_ATTESTATION_PATH"]
+    ).resolve()
+    expected_attestation_path = (
+        suite_dir
+        / "claims"
+        / f"run-{args.index:02d}"
+        / "runtime-attestation.json"
+    )
+    if runtime_attestation_path != expected_attestation_path:
+        raise RuntimeError(
+            "runtime attestation is not bound to this suite cell: "
+            f"expected={expected_attestation_path} "
+            f"actual={runtime_attestation_path}"
+        )
+    if not runtime_attestation_path.is_file():
+        raise RuntimeError(
+            f"runtime attestation is missing: {runtime_attestation_path}"
+        )
     os.environ["ZOOLOGY_LOCAL_RUN_DIR"] = str(run_dir)
     os.environ.setdefault("WANDB_MODE", "offline")
     os.environ["WANDB_RUN_ID"] = (
@@ -78,6 +98,7 @@ def main() -> None:
         "cache_manifest_sha256": sha256_file(cache_manifest_path),
         "runtime_lock_sha256": sha256_file(ROOT / "repro" / "runtime_lock.json"),
         "uv_lock_sha256": sha256_file(ROOT / "uv.lock"),
+        "runtime_attestation_sha256": sha256_file(runtime_attestation_path),
     }
     suite_dir.mkdir(parents=True, exist_ok=True)
     with metadata_path.open("x", encoding="utf-8") as handle:

@@ -179,6 +179,7 @@ cython_debug/
 /.cache/
 /.venv/
 /artifacts/
+/checkpoints/
 /data/
 /models/
 /predictions/

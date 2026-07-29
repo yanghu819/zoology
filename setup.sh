@@ -11,6 +11,10 @@ CAUSAL_WHEEL_URL="https://github.com/Dao-AILab/causal-conv1d/releases/download/v
 CAUSAL_WHEEL_SHA256="3a60ede12aa2bcd0e0cd435956bb65a9d85260381c9d99ea4c45551e3174b894"
 cd "${ROOT}"
 
+PYTHONDONTWRITEBYTECODE=1 python3 "${ROOT}/repro/path_contract.py" \
+  --root "${ROOT}" \
+  --validate-source
+
 export UV_CACHE_DIR="${ROOT}/.cache/uv"
 export XDG_CACHE_HOME="${ROOT}/.cache/xdg"
 export XDG_CONFIG_HOME="${ROOT}/.cache/xdg-config"
@@ -19,6 +23,7 @@ export PIP_CACHE_DIR="${ROOT}/.cache/pip"
 export TORCH_EXTENSIONS_DIR="${ROOT}/.cache/torch-extensions"
 export CUDA_CACHE_PATH="${ROOT}/.cache/cuda"
 export TMPDIR="${ROOT}/.cache/tmp"
+export PYTHONPYCACHEPREFIX="${ROOT}/.cache/pycache"
 export PYTHONPATH="${ROOT}/vendor/flash-linear-attention:${ROOT}"
 
 mkdir -p \
@@ -31,6 +36,7 @@ mkdir -p \
   "${CUDA_CACHE_PATH}" \
   "${TMPDIR}" \
   "${ROOT}/artifacts" \
+  "${ROOT}/checkpoints" \
   "${ROOT}/data" \
   "${ROOT}/models" \
   "${ROOT}/predictions" \
@@ -38,14 +44,27 @@ mkdir -p \
   "${ROOT}/wandb" \
   "${ROOT}/wheels"
 
-if [[ "${1:-}" != "--check" ]]; then
-  if [[ ! -x "${UV_BIN}" ]]; then
+if [[ ! -x "${UV_BIN}" ]]; then
+  if [[ "${1:-}" == "--check" ]]; then
+    echo "project-local pinned uv is missing: ${UV_BIN}" >&2
+    exit 1
+  else
     /opt/conda/bin/python -m venv --system-site-packages "${UV_BOOTSTRAP}"
     "${UV_BOOTSTRAP}/bin/python" -m pip install \
       --no-cache-dir \
       "uv==${UV_VERSION}"
   fi
-  [[ "$("${UV_BIN}" --version)" == "uv ${UV_VERSION} "* ]]
+fi
+UV_ACTUAL="$("${UV_BIN}" --version)"
+if [[
+  "${UV_ACTUAL}" != "uv ${UV_VERSION}" &&
+  "${UV_ACTUAL}" != "uv ${UV_VERSION} "*
+]]; then
+  echo "uv version mismatch: expected=${UV_VERSION} actual=${UV_ACTUAL}" >&2
+  exit 1
+fi
+
+if [[ "${1:-}" != "--check" ]]; then
   if [[ ! -x "${VENV}/bin/python" ]]; then
     "${UV_BIN}" venv \
       --python /opt/conda/bin/python \
@@ -68,7 +87,18 @@ if [[ "${1:-}" != "--check" ]]; then
     --no-deps \
     --reinstall \
     "${CAUSAL_WHEEL}"
+else
+  if [[ ! -x "${VENV}/bin/python" ]]; then
+    echo "project-local virtual environment is missing: ${VENV}" >&2
+    exit 1
+  fi
+  "${UV_BIN}" sync --frozen --check --extra build --extra test
 fi
+
+PYTHONDONTWRITEBYTECODE=1 python3 "${ROOT}/repro/path_contract.py" \
+  --root "${ROOT}" \
+  --require-environments \
+  --validate-source
 
 "${VENV}/bin/python" - <<'PY'
 import importlib.metadata

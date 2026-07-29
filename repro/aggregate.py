@@ -4,22 +4,76 @@ from __future__ import annotations
 
 import argparse
 import csv
+import io
 import json
 import math
+import os
+import stat
+import uuid
 from pathlib import Path
 
 from repro.cache_contract import OFFICIAL_CONFIG_SHA256, sha256_file
 from repro.configs.gdn_mqar_official import configs
+from repro.suite_contract import assert_complete, require_suite_location
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _read_regular_file_nofollow(path: Path) -> bytes:
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as error:
+        raise RuntimeError(
+            f"cannot safely read aggregate output {path}: {error}"
+        ) from error
+    try:
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode):
+            raise RuntimeError(f"aggregate output is not a regular file: {path}")
+        chunks = []
+        while chunk := os.read(descriptor, 1024 * 1024):
+            chunks.append(chunk)
+        return b"".join(chunks)
+    finally:
+        os.close(descriptor)
+
+
+def _publish_immutable_text(path: Path, content: str) -> None:
+    """Atomically create an output, or accept an identical prior publication."""
+    encoded = content.encode("utf-8")
+    temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    flags = (
+        os.O_WRONLY
+        | os.O_CREAT
+        | os.O_EXCL
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    descriptor = os.open(temporary, flags, 0o644)
+    try:
+        with os.fdopen(descriptor, "wb", closefd=False) as handle:
+            handle.write(encoded)
+            handle.flush()
+            os.fsync(handle.fileno())
+        try:
+            os.link(temporary, path, follow_symlinks=False)
+        except FileExistsError:
+            if _read_regular_file_nofollow(path) != encoded:
+                raise RuntimeError(
+                    f"refusing to overwrite existing aggregate output: {path}"
+                )
+    finally:
+        os.close(descriptor)
+        temporary.unlink(missing_ok=True)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--suite-dir", type=Path, required=True)
     args = parser.parse_args()
-    suite_dir = args.suite_dir.resolve()
+    suite_dir = require_suite_location(args.suite_dir)
+    assert_complete(suite_dir)
 
     baseline = json.loads(
         (ROOT / "repro" / "official_baseline.json").read_text(encoding="utf-8")
@@ -40,6 +94,8 @@ def main() -> None:
         suite_dir / "cache-manifest.json",
         suite_dir / "cache-manifest.json.sha256",
         suite_dir / "nvidia-smi.txt",
+        suite_dir / "runtime-attestation.json",
+        suite_dir / "suite-manifest.json",
     ]
     missing_evidence = [str(path) for path in evidence_paths if not path.is_file()]
     if missing_evidence:
@@ -203,14 +259,15 @@ def main() -> None:
         "runs": rows,
         "frontier": frontier,
     }
-    (suite_dir / "aggregate.json").write_text(
+    _publish_immutable_text(
+        suite_dir / "aggregate.json",
         json.dumps(payload, sort_keys=True, indent=2) + "\n",
-        encoding="utf-8",
     )
-    with (suite_dir / "frontier.csv").open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(frontier[0]))
-        writer.writeheader()
-        writer.writerows(frontier)
+    csv_handle = io.StringIO(newline="")
+    writer = csv.DictWriter(csv_handle, fieldnames=list(frontier[0]))
+    writer.writeheader()
+    writer.writerows(frontier)
+    _publish_immutable_text(suite_dir / "frontier.csv", csv_handle.getvalue())
     print(json.dumps(frontier, sort_keys=True))
 
 

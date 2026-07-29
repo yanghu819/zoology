@@ -13,6 +13,7 @@ import torch
 
 from zoology.logger import WandbLogger
 
+from repro.config_serialization import dump_full_config
 from repro.numeric_contract import require_finite
 
 
@@ -60,7 +61,10 @@ class LocalArtifactLogger(WandbLogger):
 
     def log_config(self, config):
         super().log_config(config)
-        _atomic_json(self.local_run_dir / "resolved-config.json", config.model_dump())
+        _atomic_json(
+            self.local_run_dir / "resolved-config.json",
+            dump_full_config(config),
+        )
 
     def log_model(self, model, config):
         super().log_model(model, config)

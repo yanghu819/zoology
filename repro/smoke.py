@@ -27,7 +27,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def kernel_smoke() -> None:
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA is required")
-    for d_model, seq_len in ((64, 64), (256, 256)):
+    for d_model, seq_len in ((64, 64), (256, 1024)):
         torch.manual_seed(123)
         model = GatedDeltaNet(
             d_model=d_model,

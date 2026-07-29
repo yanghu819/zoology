@@ -30,19 +30,68 @@ at `/huyang2/zoology` on logical AIStation target `GPU2`.
 
 export AISTATION_TARGET=GPU2
 export ZOOLOGY_EXPECTED_GIT_SHA="$(git rev-parse HEAD)"
-./run.sh full
+SUITE_DIR="/huyang2/zoology/runs/gdn-mqar-official-manual-$(date -u +%Y%m%dT%H%M%SZ)"
+./run.sh init-suite "${SUITE_DIR}"
+
+# Refresh this value from AIStation immediately before every cell.
+export ZOOLOGY_REMAINING_SECONDS="<current GPU2 remainTime in seconds>"
+export ZOOLOGY_REMAINING_OBSERVED_UNIX="<Unix second when status was read>"
+./run.sh resume "${SUITE_DIR}"
+
+# `resume` prints launch JSON and returns immediately. Poll the reported
+# launch_dir/terminal.json; only then refresh status and launch the next cell.
+
+# After all 12 terminal records say completed and suite validation passes:
+./run.sh aggregate "${SUITE_DIR}"
 ```
 
-`setup.sh` creates a project-local uv environment and checks the exact runtime.
+`setup.sh` creates a project-local uv environment, checks it against the frozen
+uv lock, and checks the exact runtime. Before setup, download, or execution, a
+shared path gate rejects symlinked runtime roots and untracked or ignored
+importable source shadows; all bytecode is redirected into `.cache/pycache`.
 `down.sh` materializes and manifests the synthetic data. `run.sh smoke` compiles
-the smallest and largest GDN kernels, exercises forward and backward, and runs
-a one-epoch end-to-end MQAR test. `run.sh full` then executes exactly 12 cells
-sequentially with a three-hour hard limit per cell and no automatic retry.
+the smallest GDN kernel and the largest formal `d_model=256, seq_len=1024`
+kernel, exercises forward and backward, and runs a one-epoch end-to-end MQAR
+test.
+
+AIStation's `remainTime` is a seconds countdown. A single cell has a three-hour
+hard limit, so `run.sh resume` starts exactly one next cell only when the caller
+provides at least 11,460 adjusted remaining seconds: the three-hour cell limit,
+60 seconds of hard-kill grace, and a ten-minute shutdown buffer. The observation
+timestamp makes the worker subtract setup and cache-preflight time before the
+final admission decision; observations older than ten minutes are rejected.
+Override `ZOOLOGY_MIN_REMAINING_SECONDS` only to make that infrastructure margin
+larger. The expiring-session-unsafe `run.sh full` path is disabled.
+
+`resume` reserves one launch atomically, starts its worker in a new session with
+no controlling terminal, and returns launch JSON without waiting for training.
+This is safe when the AIStation helper closes its SSH/PTTY connection after 20
+seconds. Per-cell launcher state is stored under
+`launches/run-NN/{request.json,launch.json,worker.pid,launcher.log}`. The worker
+creates `terminal.json` atomically with its final exit code. A missing terminal
+record means the worker was abruptly interrupted; it is never treated as a
+completed cell. The model's stdout and stderr remain in `logs/run-NN.log`, while
+preflight and worker-wrapper output go to `launcher.log`.
+
+`init-suite` creates one persistent suite and binds it to the exact Git tree,
+runtime lock, live GPU/runtime attestation, uv lock, source archive, and
+data-cache manifest. Each `resume`
+call revalidates those bindings and skips only a contiguous cell whose complete
+metadata, config, model metadata, finite summary, metrics, and log all validate.
+A new live attestation must match the suite's Python, Torch, Triton,
+causal-conv1d, CUDA, GPU model, and driver before each cell starts. The physical
+GPU UUID is recorded per cell but may change when logical GPU2 is reopened.
+A partial or failed cell stops the suite without deleting, overwriting, or
+silently retrying it. This makes an AIStation restart safe at a completed-cell
+boundary: reopen GPU2, verify the detached checkout, query a fresh countdown,
+and continue the same suite.
 
 All caches, wheels, data, W&B offline state, and run artifacts stay below the
-repository root. Data, checkpoints, and generated artifacts are ignored by
-Git. Each suite archives the exact Git source, cache manifest, environment,
-per-cell resolved config, logs, metrics, summary, and source/cache hashes.
+repository root. The top-level runtime roots are required to be physical
+directories rather than symbolic links. Data, checkpoints, and generated
+artifacts are ignored by Git. Each suite archives the exact Git source, cache
+manifest, environment, per-cell resolved config (including every concrete MQAR
+segment field), logs, metrics, summary, and source/cache hashes.
 
 ## Official comparison boundary
 

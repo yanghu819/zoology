@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import stat
 import subprocess
 from pathlib import Path
 
@@ -24,10 +25,37 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _content_tree_sha256(root: Path) -> str:
+def _tracked_content_tree_sha256(repo_root: Path, subtree: Path) -> str:
+    """Hash exactly the Git-indexed regular files below ``subtree``."""
+    relative_subtree = subtree.relative_to(repo_root)
+    output = subprocess.check_output(
+        [
+            "git",
+            "-C",
+            str(repo_root),
+            "ls-files",
+            "-z",
+            "--",
+            relative_subtree.as_posix(),
+        ]
+    )
+    tracked = sorted(
+        Path(raw.decode())
+        for raw in output.split(b"\0")
+        if raw
+    )
+    if not tracked:
+        raise RuntimeError(f"no tracked files found below {relative_subtree}")
     digest = hashlib.sha256()
-    for path in sorted(path for path in root.rglob("*") if path.is_file()):
-        digest.update(path.relative_to(root).as_posix().encode())
+    for relative_path in tracked:
+        path = repo_root / relative_path
+        try:
+            metadata = path.lstat()
+        except OSError as error:
+            raise RuntimeError(f"tracked vendor file is missing: {path}") from error
+        if not stat.S_ISREG(metadata.st_mode):
+            raise RuntimeError(f"tracked vendor path is not a regular file: {path}")
+        digest.update(path.relative_to(subtree).as_posix().encode())
         digest.update(b"\0")
         digest.update(bytes.fromhex(_sha256(path)))
         digest.update(b"\n")
@@ -55,7 +83,7 @@ def main() -> None:
     if not (vendor_root / "LICENSE").is_file():
         raise RuntimeError("vendored FLA license is missing")
     if (
-        _content_tree_sha256(vendor_root)
+        _tracked_content_tree_sha256(ROOT, vendor_root)
         != runtime_lock["vendored_fla_content_sha256"]
     ):
         raise RuntimeError("vendored FLA content drift")
