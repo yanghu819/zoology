@@ -8,23 +8,25 @@ learning rates for each official state-size value.
 
 | ID | State | Insight | Mechanism | Prediction | Expected upside | Budget | Kill criteria | Next decision | Resource | Actual result | Record |
 | -- | ----- | ------- | --------- | ---------- | --------------- | ------ | ------------- | ------------- | -------- | ------------- | ------ |
-| P-REPRO-001 | in-progress | Zoology's published GDN scatter is reproducible only from the 2025 result-publication snapshot, not current main; the committed evidence defines three widths and four learning rates but omits exact W&B accuracies and the original dependency/cache state. | Reproduce exactly the committed 3×4 GDN MQAR sweep from `b386338`, vendor its pinned FLA `d30c083`, prewarm the shared synthetic-data cache before scored initialization, retain seed/batches/epochs/optimizer/model unchanged, log offline, and compare the three LR-frontier points only with explicitly approximate raster values. | All 12 cells complete on GPU2; the frontier is approximately 0.89/0.99/1.00 at state sizes 17,152/67,072/265,216 bytes and each point falls within its predeclared visual tolerance. | Establish whether the public Zoology GDN claim survives a modern sm80 80GB stack while exposing rather than hiding the upstream provenance gaps. | One logical AIStation GPU2; one compile smoke, one 256-example end-to-end smoke, one cache prewarm, then exactly 12 official cells with no extra seed or LR; up to 3 hours per cell and no automatic retry. | Before formal launch, stop on source/FLA/config/GPU/path drift, failed forward/backward or end-to-end smoke, missing cache manifest, or non-detached/dirty source. During the suite, stop on the first invalid cell, nonfinite value, OOM, or timeout. Never add a seed, LR, width, batch change, or guessed fourth plot point to rescue the comparison. | Smoke miss: repair only the identified compatibility fault before any formal claim. Complete frontier within tolerance: mark done and report a configuration-level reproduction. Valid frontier mismatch: mark discarded and attribute only after checking environment/cache evidence. Invalid cell: mark failed and preserve partial artifacts without retry. | GPU2 | GPU2 smoke passed on A100 at `e4ec966`: both kernel sizes, CUDA forward/backward, and one-epoch MQAR completed; the 12-file official cache manifest was generated. Formal cells not yet launched. | — |
 
 ## B. Completed plans
 
 | ID | State | Actual result | Record |
 | -- | ----- | ------------- | ------ |
+| P-REPRO-001 | failed | Cells 00–06 completed validly on logical GPU2. Cell07 never entered training: its worker-side admission check reduced the reported 11,638 seconds by 231 seconds of setup age, leaving 11,407 seconds, 53 seconds below the frozen 11,460-second floor. The terminal is `failed`/exit 1, the suite is incomplete, and the predeclared no-retry rule stopped the experiment. There is no aggregate or full three-width frontier. The verified partial archive SHA-256 is `05a5f5d25e909496e34a5dce1c3a7dfa2b8b381ae148e1630debf8e83a2fea1f`. | `research/reports/experiments/gdn-mqar-official-20260729T134504Z-ec17472161bc.md` |
 
 ## C. Resource allocation
 
 | Resource | Plan | Run | Git SHA | GPU UUID | Started UTC | Ended UTC | State |
 | -------- | ---- | --- | ------- | -------- | ----------- | --------- | ----- |
+| GPU2 | P-REPRO-001 | `gdn-mqar-official-20260729T134504Z-ec17472161bc` | `ec17472161bc8abed3c413ada99bd9579b94fbfe` | Per-cell attestations | 2026-07-29T13:45:04Z | 2026-07-29T16:25:57Z | failed |
 
 ## D. Durable lessons
 
 | Recorded UTC | Plan | Evidence | Lesson | Consequence |
 | ------------ | ---- | -------- | ------ | ----------- |
 | 2026-07-29T13:14:26Z | P-REPRO-001 | The matching upstream causal-conv1d wheel required `GLIBC_2.32` on GPU2's GLIBC 2.31 host. A same-version source build required at most GLIBC 2.14 and matched the reference forward and gradients on the channel-last BF16 width-4 path. | Matching CUDA, Torch, Python, and C++ ABI labels do not guarantee host GLIBC compatibility. | Pin the sdist, compiler inputs, and output wheel hashes; inspect ELF symbol versions and execute the real target-layout CUDA forward/backward before a wheel enters smoke. |
+| 2026-07-29T16:25:57Z | P-REPRO-001 | Cell07 passed the controller-side time check, but setup consumed enough time that the worker-side recheck saw 11,407 seconds against a required 11,460. It failed before creating a claim, training log, run directory, or score. | A two-stage lease gate needs launch slack at least as large as worst-case setup and validation time; merely clearing the first gate is not sufficient. | Future suites should encode that slack before launch. This frozen suite remains failed: do not erase the terminal, retry the cell, or reinterpret partial scores as a completed reproduction. |
 
 ## E. Submission records
 
