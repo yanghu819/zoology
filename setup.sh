@@ -6,8 +6,9 @@ VENV="${ROOT}/.venv"
 UV_BOOTSTRAP="${ROOT}/.cache/uv-bootstrap"
 UV_BIN="${UV_BOOTSTRAP}/bin/uv"
 UV_VERSION="0.9.27"
+REQUESTS_WHEEL="${ROOT}/wheels/requests-2.34.2-py3-none-any.whl"
+REQUESTS_WHEEL_SHA256="2a0d60c172f83ac6ab31e4554906c0f3b3588d37b5cb939b1c061f4907e278e0"
 CAUSAL_WHEEL="${ROOT}/wheels/causal_conv1d-1.5.3.post1+cu12torch2.7cxx11abiTRUE-cp310-cp310-linux_x86_64.whl"
-CAUSAL_WHEEL_URL="https://github.com/Dao-AILab/causal-conv1d/releases/download/v1.5.3.post1/causal_conv1d-1.5.3.post1%2Bcu12torch2.7cxx11abiTRUE-cp310-cp310-linux_x86_64.whl"
 CAUSAL_WHEEL_SHA256="3a60ede12aa2bcd0e0cd435956bb65a9d85260381c9d99ea4c45551e3174b894"
 cd "${ROOT}"
 
@@ -71,14 +72,22 @@ if [[ "${1:-}" != "--check" ]]; then
       --system-site-packages \
       "${VENV}"
   fi
-  "${UV_BIN}" sync --frozen --extra build --extra test
+  if [[ ! -f "${REQUESTS_WHEEL}" ]]; then
+    echo "missing locally supplied locked wheel: ${REQUESTS_WHEEL}" >&2
+    exit 1
+  fi
+  printf '%s  %s\n' "${REQUESTS_WHEEL_SHA256}" "${REQUESTS_WHEEL}" | sha256sum --check -
+  "${UV_BIN}" sync \
+    --frozen \
+    --offline \
+    --no-install-project \
+    --find-links "${ROOT}/wheels" \
+    --extra build \
+    --extra test
 
   if [[ ! -f "${CAUSAL_WHEEL}" ]]; then
-    echo "downloading pinned causal-conv1d wheel into project-local wheels/" >&2
-    curl --fail --location --retry 3 \
-      --output "${CAUSAL_WHEEL}.partial" \
-      "${CAUSAL_WHEEL_URL}"
-    mv "${CAUSAL_WHEEL}.partial" "${CAUSAL_WHEEL}"
+    echo "missing locally supplied locked wheel: ${CAUSAL_WHEEL}" >&2
+    exit 1
   fi
   printf '%s  %s\n' "${CAUSAL_WHEEL_SHA256}" "${CAUSAL_WHEEL}" | sha256sum --check -
   "${UV_BIN}" pip install \
@@ -92,7 +101,14 @@ else
     echo "project-local virtual environment is missing: ${VENV}" >&2
     exit 1
   fi
-  "${UV_BIN}" sync --frozen --check --extra build --extra test
+  "${UV_BIN}" sync \
+    --frozen \
+    --offline \
+    --no-install-project \
+    --find-links "${ROOT}/wheels" \
+    --check \
+    --extra build \
+    --extra test
 fi
 
 PYTHONDONTWRITEBYTECODE=1 python3 "${ROOT}/repro/path_contract.py" \

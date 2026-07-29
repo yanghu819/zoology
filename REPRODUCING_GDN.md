@@ -46,7 +46,11 @@ export ZOOLOGY_REMAINING_OBSERVED_UNIX="<Unix second when status was read>"
 ```
 
 `setup.sh` creates a project-local uv environment, checks it against the frozen
-uv lock, and checks the exact runtime. Before setup, download, or execution, a
+uv lock, consumes hash-checked local `requests` and causal-conv1d wheels without
+remote package downloads, and checks the exact runtime. The project itself is
+imported from the frozen
+checkout rather than rebuilt as an editable wheel on the slow shared
+filesystem. Before setup, download, or execution, a
 shared path gate rejects symlinked runtime roots and untracked or ignored
 importable source shadows; all bytecode is redirected into `.cache/pycache`.
 `down.sh` materializes and manifests the synthetic data. `run.sh smoke` compiles

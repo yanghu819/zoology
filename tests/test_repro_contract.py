@@ -288,6 +288,24 @@ def test_all_persistent_paths_are_project_local():
     assert runtime["remote_root"] == "/huyang2/zoology"
 
 
+def test_setup_uses_hash_checked_local_wheels_offline():
+    setup = (ROOT / "setup.sh").read_text(encoding="utf-8")
+    assert "requests-2.34.2-py3-none-any.whl" in setup
+    assert (
+        "2a0d60c172f83ac6ab31e4554906c0f3b3588d37b5cb939b1c061f4907e278e0"
+        in setup
+    )
+    assert "causal_conv1d-1.5.3.post1+cu12torch2.7" in setup
+    assert (
+        "3a60ede12aa2bcd0e0cd435956bb65a9d85260381c9d99ea4c45551e3174b894"
+        in setup
+    )
+    assert "--offline" in setup
+    assert "--find-links" in setup
+    assert "--no-install-project" in setup
+    assert "curl " not in setup
+
+
 def test_official_baseline_does_not_invent_exact_scores():
     baseline = json.loads(
         (ROOT / "repro" / "official_baseline.json").read_text(encoding="utf-8")
