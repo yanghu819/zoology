@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "zoology-gdn-reproduction"
+version = "0.1.0"
+description = "Auditable reproduction of Zoology's historical Gated DeltaNet MQAR sweep"
+requires-python = ">=3.10,<3.11"
+dependencies = [
+  "click==8.1.8",
+  "einops==0.8.0",
+  "numpy==1.26.4",
+  "pandas==2.2.3",
+  "pydantic==2.4.2",
+  "rich==13.9.4",
+  "tqdm==4.67.1",
+  "transformers==4.46.3",
+  "wandb==0.18.7",
+]
+
+[project.optional-dependencies]
+build = [
+  "ninja==1.11.1.3",
+  "packaging==24.2",
+  "wheel==0.45.1",
+]
+test = [
+  "pytest==8.3.5",
+]
+
+[tool.setuptools.packages.find]
+include = ["repro*", "zoology*"]
+
+[tool.uv]
+package = true
+environments = [
+  "sys_platform == 'linux' and python_full_version >= '3.10' and python_full_version < '3.11'",
+]

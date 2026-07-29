@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "expected_target": "GPU2",
+  "remote_root": "/huyang2/zoology",
+  "python_prefix": "3.10.",
+  "torch": "2.7.0+cu126",
+  "triton": "3.3.0",
+  "torch_cxx11_abi": true,
+  "vendored_fla_sha": "d30c0833f9286bd5bf43c20395db53c6bab97a2d",
+  "vendored_fla_content_sha256": "3d300a65952bd9e9ddc8f8f8dc2459adef78e245357f5c898e728019049f7be2",
+  "zoology_result_snapshot": "b386338b37ce46a9257afc0a64786b0dc5a37676",
+  "causal_conv1d": "1.5.3.post1",
+  "causal_conv1d_wheel": "causal_conv1d-1.5.3.post1+cu12torch2.7cxx11abiTRUE-cp310-cp310-linux_x86_64.whl",
+  "causal_conv1d_wheel_url": "https://github.com/Dao-AILab/causal-conv1d/releases/download/v1.5.3.post1/causal_conv1d-1.5.3.post1%2Bcu12torch2.7cxx11abiTRUE-cp310-cp310-linux_x86_64.whl",
+  "causal_conv1d_wheel_sha256": "3a60ede12aa2bcd0e0cd435956bb65a9d85260381c9d99ea4c45551e3174b894",
+  "notes": [
+    "The official run did not publish a dependency lock.",
+    "This lock binds our reproduction environment; it is not claimed to be the unknown official environment."
+  ]
+}

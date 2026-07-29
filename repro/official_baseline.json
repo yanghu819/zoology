@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "task": "Zoology standard MQAR accuracy versus state-size proxy",
+  "result_publication_snapshot": "b386338b37ce46a9257afc0a64786b0dc5a37676",
+  "exact_training_sha_available": false,
+  "official_wandb_project": "hazy-research/0325_zoology",
+  "official_launch_ids": [
+    "default-2025-03-05-16-20-42",
+    "default-2025-03-05-16-41-32"
+  ],
+  "official_exact_accuracy_available": false,
+  "plot_source": "zoology/analysis/paper/results.png",
+  "plot_points": [
+    {
+      "d_model": 64,
+      "state_size_bytes": 17152,
+      "official_accuracy_exact": null,
+      "official_accuracy_visual_approx": 0.89,
+      "visual_tolerance": 0.04
+    },
+    {
+      "d_model": 128,
+      "state_size_bytes": 67072,
+      "official_accuracy_exact": null,
+      "official_accuracy_visual_approx": 0.99,
+      "visual_tolerance": 0.03
+    },
+    {
+      "d_model": 256,
+      "state_size_bytes": 265216,
+      "official_accuracy_exact": null,
+      "official_accuracy_visual_approx": 1.0,
+      "visual_tolerance": 0.03
+    }
+  ],
+  "uncommitted_plot_point": {
+    "state_size_bytes_approx": 1000000,
+    "d_model": null,
+    "official_accuracy_exact": null,
+    "included_in_reproduction": false,
+    "reason": "The PNG contains an extra GDN-colored point, but no matching committed config exists."
+  }
+}

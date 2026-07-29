@@ -174,3 +174,14 @@ cython_debug/
 # ./tests/
 # tests
 # /tests
+
+# Reproduction-local state. Every persistent runtime path lives below the repo.
+/.cache/
+/.venv/
+/artifacts/
+/data/
+/models/
+/predictions/
+/runs/
+/wheels/
+/wandb/

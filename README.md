@@ -11,6 +11,9 @@
 
 Zoology provides machine learning researchers with a simple playground for understanding and testing language model architectures on synthetic tasks. This repository can be used to reproduce the results in our paper *[Zoology: Measuring and Improving Recall in Efficient Language Models](https://arxiv.org/abs/2312.04927)*. See the section on [reproducing paper experiments](#reproducing-paper-experiments) for details.
 
+This fork's auditable reproduction of the historical Gated DeltaNet MQAR result
+is documented in [REPRODUCING_GDN.md](REPRODUCING_GDN.md).
+
 ---
 
 *Why did we make Zoology?* In our research on efficient language models, synthetic tasks have been crucial for understanding and debugging issues before scaling up to expensive pretraining runs. So, we're releasing the code we've used alongside instructions for replicating a lot of our experiments and their WandB logs.  Simplicity is our main design goal: limited dependencies, architecture implementations that are easy to understand, and a straightforward process for adding new synthetic tasks. 
@@ -209,6 +212,5 @@ If you use this codebase, or otherwise found our work valuable, please cite:
   year={2023}
 }
 ```
-
 
 
