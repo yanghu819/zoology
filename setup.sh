@@ -3,6 +3,9 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV="${ROOT}/.venv"
+UV_BOOTSTRAP="${ROOT}/.cache/uv-bootstrap"
+UV_BIN="${UV_BOOTSTRAP}/bin/uv"
+UV_VERSION="0.9.27"
 CAUSAL_WHEEL="${ROOT}/wheels/causal_conv1d-1.5.3.post1+cu12torch2.7cxx11abiTRUE-cp310-cp310-linux_x86_64.whl"
 CAUSAL_WHEEL_URL="https://github.com/Dao-AILab/causal-conv1d/releases/download/v1.5.3.post1/causal_conv1d-1.5.3.post1%2Bcu12torch2.7cxx11abiTRUE-cp310-cp310-linux_x86_64.whl"
 CAUSAL_WHEEL_SHA256="3a60ede12aa2bcd0e0cd435956bb65a9d85260381c9d99ea4c45551e3174b894"
@@ -36,8 +39,20 @@ mkdir -p \
   "${ROOT}/wheels"
 
 if [[ "${1:-}" != "--check" ]]; then
-  uv venv --python /opt/conda/bin/python --system-site-packages "${VENV}"
-  uv sync --frozen --extra build --extra test
+  if [[ ! -x "${UV_BIN}" ]]; then
+    /opt/conda/bin/python -m venv --system-site-packages "${UV_BOOTSTRAP}"
+    "${UV_BOOTSTRAP}/bin/python" -m pip install \
+      --no-cache-dir \
+      "uv==${UV_VERSION}"
+  fi
+  [[ "$("${UV_BIN}" --version)" == "uv ${UV_VERSION} "* ]]
+  if [[ ! -x "${VENV}/bin/python" ]]; then
+    "${UV_BIN}" venv \
+      --python /opt/conda/bin/python \
+      --system-site-packages \
+      "${VENV}"
+  fi
+  "${UV_BIN}" sync --frozen --extra build --extra test
 
   if [[ ! -f "${CAUSAL_WHEEL}" ]]; then
     echo "downloading pinned causal-conv1d wheel into project-local wheels/" >&2
@@ -47,7 +62,7 @@ if [[ "${1:-}" != "--check" ]]; then
     mv "${CAUSAL_WHEEL}.partial" "${CAUSAL_WHEEL}"
   fi
   printf '%s  %s\n' "${CAUSAL_WHEEL_SHA256}" "${CAUSAL_WHEEL}" | sha256sum --check -
-  uv pip install \
+  "${UV_BIN}" pip install \
     --python "${VENV}/bin/python" \
     --no-build-isolation \
     --no-deps \
@@ -73,6 +88,10 @@ assert sys.version.startswith(lock["python_prefix"]), (
     lock["python_prefix"],
 )
 assert torch.__version__ == lock["torch"], (torch.__version__, lock["torch"])
+assert torchvision.__version__ == lock["torchvision"], (
+    torchvision.__version__,
+    lock["torchvision"],
+)
 assert triton.__version__ == lock["triton"], (triton.__version__, lock["triton"])
 assert bool(torch._C._GLIBCXX_USE_CXX11_ABI) == lock["torch_cxx11_abi"]
 assert importlib.metadata.version("causal-conv1d") == lock["causal_conv1d"]
