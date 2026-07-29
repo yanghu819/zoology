@@ -50,7 +50,11 @@ uv lock, requires the complete 52-file Linux CPython 3.10 wheelhouse, and
 bootstraps the pinned uv binary from a hash-checked local wheel. It exports
 hashes directly from `uv.lock`, syncs all 50 locked registry dependencies from
 the local wheelhouse with index access disabled, and then installs the
-separately hash-checked causal-conv1d wheel. The project itself is imported from
+separately hash-checked causal-conv1d wheel. That wheel was built on GPU2 from
+the hash-locked `1.5.3.post1` sdist against CUDA 12.6 and Torch 2.7 because the
+matching upstream binary requires GLIBC 2.32 while GPU2 provides GLIBC 2.31.
+`repro/runtime_lock.json` records the rejected binary, source, toolchain, ABI,
+ELF requirement, and final wheel hashes. The project itself is imported from
 the frozen checkout rather than rebuilt as an editable wheel on the slow
 shared filesystem. Before setup, download, or execution, a
 shared path gate rejects symlinked runtime roots and untracked or ignored

@@ -40,8 +40,8 @@ RUNTIME_DIRECTORIES = (
 ENVIRONMENT_DIRECTORIES = (".cache/uv-bootstrap", ".venv")
 RUNTIME_FILES = (
     ".cache/control/uv-lock-requirements.txt",
-    "wheels/causal_conv1d-1.5.3.post1+cu12torch2.7cxx11abiTRUE-cp310-cp310-linux_x86_64.whl",
-    "wheels/causal_conv1d-1.5.3.post1+cu12torch2.7cxx11abiTRUE-cp310-cp310-linux_x86_64.whl.partial",
+    "wheels/causal_conv1d-1.5.3.post1-cp310-cp310-linux_x86_64.whl",
+    "wheels/causal_conv1d-1.5.3.post1-cp310-cp310-linux_x86_64.whl.partial",
 )
 IMPORT_SOURCE_DIRECTORIES = (
     "repro",

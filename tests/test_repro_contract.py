@@ -290,6 +290,9 @@ def test_all_persistent_paths_are_project_local():
 
 def test_setup_uses_hash_checked_local_wheels_offline():
     setup = (ROOT / "setup.sh").read_text(encoding="utf-8")
+    runtime = json.loads(
+        (ROOT / "repro" / "runtime_lock.json").read_text(encoding="utf-8")
+    )
     assert (
         "uv-0.9.27-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl"
         in setup
@@ -303,10 +306,12 @@ def test_setup_uses_hash_checked_local_wheels_offline():
         "2a0d60c172f83ac6ab31e4554906c0f3b3588d37b5cb939b1c061f4907e278e0"
         in setup
     )
-    assert "causal_conv1d-1.5.3.post1+cu12torch2.7" in setup
+    assert runtime["causal_conv1d_wheel"] in setup
+    assert runtime["causal_conv1d_wheel_sha256"] in setup
+    assert runtime["causal_conv1d_sdist"] == "causal_conv1d-1.5.3.post1.tar.gz"
     assert (
-        "3a60ede12aa2bcd0e0cd435956bb65a9d85260381c9d99ea4c45551e3174b894"
-        in setup
+        runtime["causal_conv1d_sdist_sha256"]
+        == "aba1b717484472d0b2f2e40520a1c03f35fe5155555bd753d1c324afc56ba468"
     )
     assert "--offline" in setup
     assert "--no-cache" in setup

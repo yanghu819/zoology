@@ -11,8 +11,8 @@ UV_WHEEL="${ROOT}/wheels/uv-0.9.27-py3-none-manylinux_2_17_x86_64.manylinux2014_
 UV_WHEEL_SHA256="79939f7e92d707fb84933509df747d1b88b00d94ebe41f3a1e30916cc33c7307"
 REQUESTS_WHEEL="${ROOT}/wheels/requests-2.34.2-py3-none-any.whl"
 REQUESTS_WHEEL_SHA256="2a0d60c172f83ac6ab31e4554906c0f3b3588d37b5cb939b1c061f4907e278e0"
-CAUSAL_WHEEL="${ROOT}/wheels/causal_conv1d-1.5.3.post1+cu12torch2.7cxx11abiTRUE-cp310-cp310-linux_x86_64.whl"
-CAUSAL_WHEEL_SHA256="3a60ede12aa2bcd0e0cd435956bb65a9d85260381c9d99ea4c45551e3174b894"
+CAUSAL_WHEEL="${ROOT}/wheels/causal_conv1d-1.5.3.post1-cp310-cp310-linux_x86_64.whl"
+CAUSAL_WHEEL_SHA256="3a5ebc4f7f41ab94aee533f16fb14b4f974589cedee78061f6f55a3ec422ea8a"
 LOCKED_REQUIREMENTS="${ROOT}/.cache/control/uv-lock-requirements.txt"
 cd "${ROOT}"
 

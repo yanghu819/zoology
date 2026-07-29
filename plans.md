@@ -24,6 +24,7 @@ learning rates for each official state-size value.
 
 | Recorded UTC | Plan | Evidence | Lesson | Consequence |
 | ------------ | ---- | -------- | ------ | ----------- |
+| 2026-07-29T13:14:26Z | P-REPRO-001 | The matching upstream causal-conv1d wheel required `GLIBC_2.32` on GPU2's GLIBC 2.31 host. A same-version source build required at most GLIBC 2.14 and matched the reference forward and gradients on the channel-last BF16 width-4 path. | Matching CUDA, Torch, Python, and C++ ABI labels do not guarantee host GLIBC compatibility. | Pin the sdist, compiler inputs, and output wheel hashes; inspect ELF symbol versions and execute the real target-layout CUDA forward/backward before a wheel enters smoke. |
 
 ## E. Submission records
 

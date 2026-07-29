@@ -56,13 +56,23 @@ def test_runtime_environment_symlink_is_rejected(tmp_path: Path):
         ensure_runtime_paths(root)
 
 
-def test_runtime_wheel_symlink_is_rejected(tmp_path: Path):
+@pytest.mark.parametrize(
+    "relative",
+    (
+        "wheels/causal_conv1d-1.5.3.post1-cp310-cp310-linux_x86_64.whl",
+        "wheels/causal_conv1d-1.5.3.post1-cp310-cp310-linux_x86_64.whl.partial",
+    ),
+)
+def test_runtime_wheel_symlink_is_rejected(
+    tmp_path: Path,
+    relative: str,
+):
     root = tmp_path / "repo"
     root.mkdir()
     ensure_runtime_paths(root)
     outside = tmp_path / "outside.whl"
     outside.write_bytes(b"wheel")
-    (root / "wheels" / "shadow.whl").symlink_to(outside)
+    (root / relative).symlink_to(outside)
 
     with pytest.raises(RuntimeError, match="not a regular file"):
         ensure_runtime_paths(root)
