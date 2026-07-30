@@ -4,10 +4,13 @@
 
 - Plan: `P-BASELINE-001`
 - Run: `gdn-mqar-single-baseline-20260730T031705Z`
-- State: `in-progress`
+- State: `failed`
 - Approved UTC: `2026-07-30T03:17:05Z`
 - Started UTC (verified resource allocation and preflight; not worker launch):
   `2026-07-30T06:01:44Z`
+- Ended UTC (trusted local closeout observation): `2026-07-30T06:24:50Z`
+- Formal worker launch: never occurred; controller admission failed before
+  request creation
 - Target: logical AIStation `GPU2`
 - AIStation workspace: `dceb3cf7-78de-4c02-bf2c-a3f8d27efe5f`
 - Host: `ec8ev3phfepdd-0`
@@ -24,10 +27,11 @@
   suite manifest will independently capture and bind the same SHA and tree at
   initialization.
 
-This is a separately archived standalone rerun of a setting already observed
-among the valid partial cells of the prior failed formal 12-cell reproduction.
-Those partial results are used here as pilot evidence. This run is not a
-statistically independent sample.
+This was intended to be a separately archived standalone rerun of a setting
+already observed among the valid partial cells of the prior failed formal
+12-cell reproduction. Those partial results informed the selection, but the
+new worker never launched. This failed attempt produced no new model sample,
+independent or otherwise.
 
 ## 2. Hypothesis
 
@@ -150,7 +154,11 @@ export ZOOLOGY_REMAINING_OBSERVED_UNIX="${SAVED_STATUS_OBSERVED_UNIX}"
   /huyang2/zoology/runs/gdn-mqar-single-baseline-20260730T031705Z
 ```
 
-After the immutable terminal says `completed`:
+The command entered only the controller-admission phase. It atomically wrote a
+failed `controller-admission.json` and returned exit code 1 before
+`cell_launcher` created a request. No launch or worker command followed.
+
+The following predeclared successful-closeout commands were therefore not run:
 
 ```bash
 ./run.sh finalize-baseline \
@@ -165,23 +173,102 @@ After the immutable terminal says `completed`:
 
 ## 6. Artifacts
 
-The immutable manifest, source snapshot, status response, controller and worker
-admission records, launch record, terminal, resolved config, metrics, summary,
-logs, result, file inventory, archive hashes, formal Git SHA/tree, GPU
-attestation, and safe extraction verification will be recorded here after the
-terminal state is validated.
+- Remote suite:
+  `/huyang2/zoology/runs/gdn-mqar-single-baseline-20260730T031705Z`
+- Complete failure-evidence archive:
+  `gdn-mqar-single-baseline-20260730T031705Z-complete-failure-evidence.tar.gz`
+- Archive SHA-256:
+  `7037f8e9967520d6d7f83e7f7cad475647950cbff68a4515b2c19d05c325deab`
+- Archive sidecar SHA-256:
+  `da7899bc3a761e4159448951e889af6701a03b154a1879bc4d24036cbecc0b88`
+- Nineteen-file inventory SHA-256:
+  `80a780ee05293eee59c0403b898f6defee7abaaf9a6fa18278a7def5e17af889`
+- Saved AIStation status SHA-256:
+  `ae6c4265b099a6403b9821ffd928596ef1c24a4504dac8128fbfd48b08e190fc`
+- Failed controller-admission SHA-256:
+  `73eef5803a45bd8e36eb41eaef679b8028486ecefe2c7d1791c2cd2f49bd5acd`
+- Preflight log SHA-256:
+  `aa42ab85c4a758dddac9d93f77afa9a761aab0490c04bbc2f58a1fe958436e09`
+- Initialization log SHA-256:
+  `19c9734b730cdb0ee4a451129e344e626065b9e8400627f2673207f506436c00`
+- Controller wrapper log SHA-256:
+  `b66bf1b166a3f6f3b975b70515eb726a789207792572f39f6fb21643d71fa60b`
+- Local safe extraction:
+  `/Users/torusmini/Documents/zoology/artifacts/release-verify/gdn-mqar-single-baseline-20260730T031705Z-complete-failure-evidence/safe.5zn4zoyz`
+- Neutral archive tag:
+  `archive/gdn-mqar-single-baseline-20260730-failed-prelaunch`
 
-Models and checkpoints are excluded from Git and from the GitHub release.
+The deterministic archive contains the ten immutable suite files, the three
+empty lifecycle directories, and nine suite-external preflight,
+initialization, and controller control files. The 19 regular files were
+inventory-verified remotely before and after archiving, pulled unchanged, and
+independently verified locally. Verification rejected links, special files,
+unsafe paths, duplicate members, hash drift, unexpected lifecycle evidence,
+and credential-like content, including inside the nested source snapshot.
+
+No request, launch, worker admission, terminal, run metadata, training log,
+metrics, summary, result, model, optimizer state, or checkpoint was created.
+Consequently no model, data, checkpoint, or optimizer state is present in Git
+or in the GitHub release.
 
 ## 7. Results
 
-No result exists before formal launch.
+Preflight completed with status 0 at `2026-07-30T06:05:27Z`, and the frozen
+single-baseline suite initialized with status 0 at
+`2026-07-30T06:07:31Z`. Source SHA/tree, the runtime, cache, smoke test, GPU2
+workspace, and fixed configuration all passed their prelaunch checks.
+
+The saved AIStation response reported 13,554 seconds remaining and was stamped
+at Unix `1785391952` (`2026-07-30T06:12:32Z`). The remote controller checked at
+Unix `1785391910`, producing:
+
+```text
+raw_age_seconds=-42
+allowed_future_tolerance_seconds=30
+AIStation observation timestamp is implausibly in the future:
+observed=1785391952 now=1785391910
+```
+
+The remaining-time amount was sufficient for the 12,060-second controller
+floor. The failure was instead the 42-second disagreement between the status
+collector's clock and the remote verifier's clock, which exceeded the frozen
+30-second future-timestamp tolerance. The immutable admission record has
+`passed=false`, and the controller wrapper exited 1.
+
+| Measure | Outcome |
+| ------- | ------- |
+| Reproduced final `valid/accuracy` | Not evaluated; worker never launched |
+| Strong threshold `>=0.98` | Not evaluated |
+| Visual-compatibility floor `>=0.96` | Not evaluated |
+| Final KV256 diagnostic `>=0.88` | Not evaluated |
+| Delta versus official visual approximation | Not available |
+
+There is no valid or invalid model score. In particular, the prior partial
+suite's `0.9859620536` pilot observation is not reused as this run's result.
+This run cannot be compared numerically with the approximate official 0.99
+plot point.
 
 ## 8. Conclusions
 
-No conclusion is permitted before terminal and artifact validation.
+Decision: `failed`.
+
+This is an infrastructure/orchestration failure before launch, not a training
+failure and not a model result. The frozen no-retry rule applies: the status
+timestamp was not edited, the 30-second tolerance was not relaxed, and no
+second controller or worker was launched. The single-configuration hypothesis
+is neither supported nor rejected.
+
+The reusable lesson is that freshness checks spanning two hosts need either a
+shared clock domain or an explicitly measured and bounded clock offset. Ample
+lease time alone is insufficient. Any future attempt must be a separately
+approved experiment that measures clock skew before formal launch; it cannot
+retroactively repair this run.
+
+Because no training occurred, this attempt supplies no new evidence for or
+against the published GDN result or the Bitter Lesson.
 
 ## 9. Submission record
 
 This is a reproduction baseline, not a competition submission. No submission
-is planned.
+was made. No `exp/score-*` tag exists because there is no score; only the
+neutral failure-evidence archive is published.

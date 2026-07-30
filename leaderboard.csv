@@ -1,2 +1,3 @@
 recorded_at_utc,experiment_id,plan_id,git_sha,upstream_snapshot,fla_sha,d_model,best_learning_rate,state_size_bytes,reproduced_accuracy,official_accuracy_exact,official_accuracy_visual_approx,delta_vs_visual_approx,status,report
 2026-07-29T16:25:57Z,E-GDN-MQAR-REPRO-001,P-REPRO-001,ec17472161bc8abed3c413ada99bd9579b94fbfe,b386338b37ce46a9257afc0a64786b0dc5a37676,d30c0833f9286bd5bf43c20395db53c6bab97a2d,,,,,,,,failed,research/reports/experiments/gdn-mqar-official-20260729T134504Z-ec17472161bc.md
+2026-07-30T06:24:50Z,E-GDN-MQAR-BASELINE-001,P-BASELINE-001,3890b00f620a8f43ff3af25c471fbc14268c6fdd,b386338b37ce46a9257afc0a64786b0dc5a37676,d30c0833f9286bd5bf43c20395db53c6bab97a2d,128,,67072,,,,,failed,research/reports/experiments/gdn-mqar-single-baseline-20260730T031705Z.md
