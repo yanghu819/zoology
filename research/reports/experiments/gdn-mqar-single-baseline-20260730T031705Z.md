@@ -6,7 +6,8 @@
 - Run: `gdn-mqar-single-baseline-20260730T031705Z`
 - State: `in-progress`
 - Approved UTC: `2026-07-30T03:17:05Z`
-- Started UTC: `2026-07-30T06:01:44Z`
+- Started UTC (verified resource allocation and preflight; not worker launch):
+  `2026-07-30T06:01:44Z`
 - Target: logical AIStation `GPU2`
 - AIStation workspace: `dceb3cf7-78de-4c02-bf2c-a3f8d27efe5f`
 - Host: `ec8ev3phfepdd-0`
