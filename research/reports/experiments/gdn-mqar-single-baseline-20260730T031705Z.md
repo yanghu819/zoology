@@ -4,15 +4,24 @@
 
 - Plan: `P-BASELINE-001`
 - Run: `gdn-mqar-single-baseline-20260730T031705Z`
-- State: `approved`
+- State: `in-progress`
 - Approved UTC: `2026-07-30T03:17:05Z`
+- Started UTC: `2026-07-30T06:01:44Z`
 - Target: logical AIStation `GPU2`
+- AIStation workspace: `dceb3cf7-78de-4c02-bf2c-a3f8d27efe5f`
+- Host: `ec8ev3phfepdd-0`
+- Physical GPU:
+  `GPU-0da20a4f-5e67-e47d-7aab-8c6efa2864ad` (`NVIDIA A100-SXM4-80GB`)
 - Remote root: `/huyang2/zoology`
 - Run directory:
   `/huyang2/zoology/runs/gdn-mqar-single-baseline-20260730T031705Z`
-- Formal source: the clean detached Git HEAD captured by the immutable suite
-  manifest at initialization. Its exact SHA and tree will be copied into
-  section 6 after terminal validation.
+- Formal source commit:
+  `3890b00f620a8f43ff3af25c471fbc14268c6fdd`
+- Formal source tree:
+  `75d4da2c40d1f8ece0751c8dbd9da2342fd5a3c8`
+- The remote must clean-checkout that commit in detached mode. The immutable
+  suite manifest will independently capture and bind the same SHA and tree at
+  initialization.
 
 This is a separately archived standalone rerun of a setting already observed
 among the valid partial cells of the prior failed formal 12-cell reproduction.
