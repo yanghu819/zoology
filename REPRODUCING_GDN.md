@@ -1,15 +1,16 @@
 # Reproducing Zoology's Gated DeltaNet MQAR result
 
-This branch reproduces the three Gated DeltaNet configurations published for
-Zoology's standard MQAR accuracy-versus-state-size plot. It deliberately does
-not use current `main`: the closest public result-publication snapshot is
+This branch provides a harness targeting the three Gated DeltaNet
+configurations published for Zoology's standard MQAR
+accuracy-versus-state-size plot. It deliberately does not use current `main`:
+the closest public result-publication snapshot is
 `b386338b37ce46a9257afc0a64786b0dc5a37676`.
 
 ## What is frozen
 
 - 12 cells: `d_model={64,128,256}` crossed with four official learning rates.
 - Seed 123, batch sizes `(256,32)`, at most 32 epochs, and strict early stopping
-  only when final validation accuracy exceeds 0.99.
+  only when an epoch's validation accuracy exceeds 0.99.
 - The historical two-layer hybrid: BaseConv with kernel size 3 followed by
   Gated DeltaNet with two heads and its short convolution enabled.
 - Vendored FLA commit `d30c0833f9286bd5bf43c20395db53c6bab97a2d`.
@@ -23,6 +24,61 @@ cache-hit/cache-miss RNG ambiguity and is recorded in a hashed manifest.
 
 Formal execution is intentionally accepted only from a clean, detached commit
 at `/huyang2/zoology` on logical AIStation target `GPU2`.
+
+### Single-setting baseline
+
+The high-signal baseline path freezes the official-grid configuration assigned
+local harness index 5: `d_model=128`, learning rate `10^-2.5`, and seed 123.
+The setting cannot be changed through the CLI.
+
+```bash
+export AISTATION_TARGET=GPU2
+export ZOOLOGY_EXPECTED_GIT_SHA="$(git rev-parse HEAD)"
+BASELINE_DIR="/huyang2/zoology/runs/gdn-mqar-single-baseline-$(date -u +%Y%m%dT%H%M%SZ)-${ZOOLOGY_EXPECTED_GIT_SHA:0:12}"
+
+./setup.sh
+./run.sh smoke
+./run.sh init-baseline "${BASELINE_DIR}"
+
+# From the local controller, save one fresh
+# `aistation_api.js status GPU2` JSON response and upload it unchanged to:
+# ${BASELINE_DIR}/aistation-status.json
+# Read both values below from that same response.
+export ZOOLOGY_REMAINING_SECONDS="<current GPU2 remainTime in seconds>"
+export ZOOLOGY_REMAINING_OBSERVED_UNIX="<Unix second when status was read>"
+./run.sh launch-baseline "${BASELINE_DIR}"
+
+# After launches/run-05/terminal.json says completed:
+./run.sh finalize-baseline "${BASELINE_DIR}"
+./run.sh validate-baseline "${BASELINE_DIR}"
+```
+
+The controller requires 12,060 adjusted seconds before launching, while the
+worker independently requires 11,460 adjusted seconds after setup. The
+600-second difference is reserved for launch and environment validation. The
+exact AIStation response, logical `GPU2` row, workspace ID, remaining time,
+observation time, check time, age adjustment, decision, and both admission
+hashes are retained. Controller admission hash-freezes the baseline manifest,
+and the final result binds the complete request, launch, and terminal records
+plus every retained source/config/metric/log/runtime evidence file by SHA-256.
+The result contract also enforces the manifest → controller → request → launch
+→ worker → terminal chronology and rejects any non-cell05 artifact, generic
+suite worker, changed admission evidence, missing terminal record, or mutated
+metric.
+
+Final overall accuracy at or above 0.98 is a project-defined strong baseline
+pass, not an upstream threshold. Accuracy from 0.96 inclusive to 0.98 exclusive
+is only visually compatible with the approximate 0.99 PNG reading after
+subtracting the project's 0.03 visual-reading tolerance; the interval is not a
+confidence interval or error bar. KV256 accuracy at or above 0.88 is a
+pilot-informed non-official diagnostic. Falling below it records an anomaly and
+prevents unqualified adoption as this fork's canonical baseline without
+changing the overall classification.
+
+The result remains a pilot-informed single-setting baseline. It is not the
+official best-of-four point and cannot establish the complete frontier.
+
+### Full 12-cell suite
 
 ```bash
 ./setup.sh
@@ -113,5 +169,6 @@ project is not anonymously accessible. Consequently:
 - the committed PNG is used only for clearly labeled approximate visual checks;
 - the unexplained fourth GDN-colored point is excluded because no matching
   committed configuration exists;
-- a successful run is called a configuration-level reproduction, never a
-  bitwise or exact-score reproduction.
+- a successful single-setting run is called a fixed-configuration baseline
+  reproduction, never a bitwise, exact-score, best-of-four, width-level, or
+  frontier reproduction.

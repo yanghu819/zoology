@@ -1,6 +1,7 @@
 import json
 import math
 import subprocess
+import time
 from dataclasses import replace
 from pathlib import Path
 
@@ -15,9 +16,23 @@ from repro.cache_contract import (
 from repro.config_serialization import dump_full_config
 from repro.configs.gdn_mqar_official import configs
 from repro.numeric_contract import require_finite
+from repro.single_baseline import (
+    AISTATION_STATUS_NAME,
+    BASELINE_RESULT_NAME,
+    CONTROLLER_ADMISSION_FLOOR,
+    CONTROLLER_ADMISSION_NAME,
+    WORKER_ADMISSION_FLOOR,
+    WORKER_ADMISSION_NAME,
+    finalize_baseline,
+    initialize_baseline,
+    record_admission,
+    validate_baseline,
+    validate_result,
+)
 from repro.suite_contract import (
     build_suite_manifest,
     next_pending_index,
+    prepare_cell,
     validate_admission,
 )
 
@@ -97,7 +112,12 @@ def _make_empty_suite(tmp_path: Path) -> tuple[Path, dict]:
     return suite_dir, manifest
 
 
-def _write_completed_cell(suite_dir: Path, manifest: dict, index: int) -> None:
+def _write_completed_cell(
+    suite_dir: Path,
+    manifest: dict,
+    index: int,
+    worker_mode: str = "_cell-worker",
+) -> None:
     config = configs[index]
     run_dir = suite_dir / (
         f"{index:02d}__d{config.model.d_model}"
@@ -177,14 +197,53 @@ def _write_completed_cell(suite_dir: Path, manifest: dict, index: int) -> None:
     )
     launch_dir = suite_dir / "launches" / f"run-{index:02d}"
     launch_dir.mkdir()
-    command = [str(ROOT / "run.sh"), "_cell-worker", str(index)]
+    baseline_fields = {}
+    baseline_launch_fields = {}
+    requested_utc = "2026-07-30T00:00:00+00:00"
+    launched_utc = "2026-07-30T00:00:01+00:00"
+    if worker_mode == "_baseline-worker":
+        controller_admission = json.loads(
+            (suite_dir / CONTROLLER_ADMISSION_NAME).read_text(encoding="utf-8")
+        )
+        requested_utc = controller_admission["checked_utc"]
+        launched_utc = controller_admission["checked_utc"]
+        baseline_fields = {
+            "baseline_manifest_sha256": sha256_file(
+                suite_dir / "single-baseline-manifest.json"
+            ),
+            "controller_admission_sha256": sha256_file(
+                suite_dir / CONTROLLER_ADMISSION_NAME
+            ),
+        }
+        baseline_launch_fields = {
+            "reported_remaining_seconds": str(
+                controller_admission["reported_remaining_seconds"]
+            ),
+            "remaining_observed_unix": str(
+                controller_admission["observed_unix"]
+            ),
+            "minimum_remaining_seconds": str(WORKER_ADMISSION_FLOOR),
+            "controller_minimum_remaining_seconds": str(
+                CONTROLLER_ADMISSION_FLOOR
+            ),
+        }
+    command = [
+        str(ROOT / "run.sh"),
+        worker_mode,
+        str(index),
+        str(suite_dir.resolve()),
+        str(launch_dir.resolve()),
+    ]
     (launch_dir / "request.json").write_text(
         json.dumps(
             {
                 "schema_version": 1,
                 "state": "requested",
                 "cell_index": index,
+                "requested_utc": requested_utc,
                 "suite_dir": str(suite_dir.resolve()),
+                "worker_mode": worker_mode,
+                **baseline_fields,
                 "command": command,
             }
         ),
@@ -197,13 +256,28 @@ def _write_completed_cell(suite_dir: Path, manifest: dict, index: int) -> None:
                 "state": "launched",
                 "cell_index": index,
                 "worker_pid": 123,
+                "launched_utc": launched_utc,
                 "suite_dir": str(suite_dir.resolve()),
+                "worker_mode": worker_mode,
+                **baseline_fields,
+                "launcher_log": str((launch_dir / "launcher.log").resolve()),
+                "cell_log": str(
+                    (
+                        suite_dir
+                        / "logs"
+                        / f"run-{index:02d}.log"
+                    ).resolve()
+                ),
+                "terminal_record": str(
+                    (launch_dir / "terminal.json").resolve()
+                ),
                 "command": command,
                 "expected_git_sha": subprocess.check_output(
                     ["git", "-C", str(ROOT), "rev-parse", "HEAD"],
                     text=True,
                 ).strip(),
                 "aistation_target": "GPU2",
+                **baseline_launch_fields,
             }
         ),
         encoding="utf-8",
@@ -218,18 +292,23 @@ def _write_completed_cell(suite_dir: Path, manifest: dict, index: int) -> None:
                 "cell_index": index,
                 "worker_pid": 123,
                 "exit_code": 0,
+                "ended_utc": "2026-07-30T00:00:02+00:00",
             }
         ),
         encoding="utf-8",
     )
 
 
-def _write_active_launch(suite_dir: Path, index: int) -> None:
+def _write_active_launch(
+    suite_dir: Path,
+    index: int,
+    worker_mode: str = "_cell-worker",
+) -> None:
     launch_dir = suite_dir / "launches" / f"run-{index:02d}"
     launch_dir.mkdir()
     command = [
         str(ROOT / "run.sh"),
-        "_cell-worker",
+        worker_mode,
         str(index),
         str(suite_dir.resolve()),
         str(launch_dir.resolve()),
@@ -239,6 +318,7 @@ def _write_active_launch(suite_dir: Path, index: int) -> None:
         "state": "requested",
         "cell_index": index,
         "suite_dir": str(suite_dir.resolve()),
+        "worker_mode": worker_mode,
         "command": command,
     }
     launch = {
@@ -247,12 +327,21 @@ def _write_active_launch(suite_dir: Path, index: int) -> None:
         "cell_index": index,
         "worker_pid": 123,
         "suite_dir": str(suite_dir.resolve()),
+        "worker_mode": worker_mode,
         "command": command,
         "expected_git_sha": subprocess.check_output(
             ["git", "-C", str(ROOT), "rev-parse", "HEAD"],
             text=True,
         ).strip(),
         "aistation_target": "GPU2",
+        **(
+            {
+                "minimum_remaining_seconds": "11460",
+                "controller_minimum_remaining_seconds": "12060",
+            }
+            if worker_mode == "_baseline-worker"
+            else {}
+        ),
     }
     (launch_dir / "request.json").write_text(
         json.dumps(request),
@@ -551,3 +640,471 @@ def test_resume_rejects_run_directory_symlink(tmp_path):
 
     with pytest.raises(RuntimeError, match="not a real directory"):
         next_pending_index(suite_dir)
+
+
+def _write_aistation_status(
+    suite_dir: Path,
+    remaining_seconds: int,
+) -> None:
+    (suite_dir / AISTATION_STATUS_NAME).write_text(
+        json.dumps(
+            {
+                "command": "status",
+                "ok": True,
+                "targets": [
+                    {
+                        "wpName": "GPU2",
+                        "wpId": "workspace-test-gpu2",
+                        "wpStatus": "Running",
+                        "image": "test-image",
+                        "resource": "GPU:1",
+                        "remainTime": str(remaining_seconds),
+                    }
+                ],
+                "actions": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def _make_completed_single_baseline(tmp_path: Path) -> Path:
+    suite_dir, suite_manifest = _make_empty_suite(tmp_path)
+    initialize_baseline(suite_dir, 5)
+    remaining_seconds = 13_000
+    observed_unix = math.ceil(time.time())
+    _write_aistation_status(suite_dir, remaining_seconds)
+    record_admission(
+        suite_dir,
+        "controller",
+        remaining_seconds,
+        observed_unix,
+    )
+    _write_completed_cell(
+        suite_dir,
+        suite_manifest,
+        5,
+        worker_mode="_baseline-worker",
+    )
+    record_admission(
+        suite_dir,
+        "worker",
+        remaining_seconds,
+        observed_unix,
+    )
+    terminal_path = suite_dir / "launches" / "run-05" / "terminal.json"
+    terminal = json.loads(terminal_path.read_text(encoding="utf-8"))
+    worker_admission = json.loads(
+        (
+            suite_dir
+            / "launches"
+            / "run-05"
+            / WORKER_ADMISSION_NAME
+        ).read_text(encoding="utf-8")
+    )
+    terminal["ended_utc"] = worker_admission["checked_utc"]
+    terminal["worker_admission_sha256"] = sha256_file(
+        suite_dir / "launches" / "run-05" / WORKER_ADMISSION_NAME
+    )
+    terminal_path.write_text(json.dumps(terminal), encoding="utf-8")
+    config = configs[5]
+    run_dir = suite_dir / (
+        f"05__d{config.model.d_model}"
+        f"__lr{float(config.learning_rate):.10g}"
+    )
+    summary_path = run_dir / "summary.json"
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    summary["best_valid_accuracy"] = 0.9861
+    summary["final_metrics"] = {
+        "valid/accuracy": 0.9859,
+        "valid/num_kv_pairs/accuracy-256": 0.902,
+    }
+    summary_path.write_text(json.dumps(summary), encoding="utf-8")
+    (run_dir / "metrics.jsonl").write_text(
+        '{"valid/accuracy": 0.9861, '
+        '"valid/num_kv_pairs/accuracy-256": 0.91}\n'
+        '{"valid/accuracy": 0.9859, '
+        '"valid/num_kv_pairs/accuracy-256": 0.902}\n',
+        encoding="utf-8",
+    )
+    return suite_dir
+
+
+def test_single_baseline_freezes_pilot_informed_cell_five(tmp_path):
+    suite_dir, _ = _make_empty_suite(tmp_path)
+    manifest = initialize_baseline(suite_dir, 5)
+
+    assert manifest["selected_index"] == 5
+    assert manifest["d_model"] == 128
+    assert math.isclose(manifest["learning_rate"], 10**-2.5)
+    assert manifest["strong_accuracy_floor"] == 0.98
+    assert manifest["visual_compatibility_floor"] == 0.96
+    assert manifest["full_frontier_claim_allowed"] is False
+    assert "not published by upstream" in (
+        manifest["strong_accuracy_floor_provenance"]
+    )
+    assert "confidence interval" in (
+        manifest["visual_compatibility_floor_provenance"]
+    )
+    assert validate_baseline(suite_dir) == manifest
+
+
+def test_single_baseline_rejects_any_other_official_cell(tmp_path):
+    suite_dir, _ = _make_empty_suite(tmp_path)
+
+    with pytest.raises(
+        ValueError,
+        match="must use local harness index 5 from the official grid",
+    ):
+        initialize_baseline(suite_dir, 9)
+
+
+def test_single_baseline_rejects_sequential_suite_entrypoints(tmp_path):
+    suite_dir, _ = _make_empty_suite(tmp_path)
+    initialize_baseline(suite_dir, 5)
+
+    with pytest.raises(RuntimeError, match="sequential suite contract"):
+        next_pending_index(suite_dir)
+    with pytest.raises(RuntimeError, match="sequential suite contract"):
+        prepare_cell(suite_dir, 0)
+
+
+def test_single_baseline_launch_reserves_controller_setup_slack():
+    run_script = (ROOT / "run.sh").read_text(encoding="utf-8")
+
+    assert CONTROLLER_ADMISSION_FLOOR == 12_060
+    assert WORKER_ADMISSION_FLOOR == 11_460
+    assert CONTROLLER_ADMISSION_FLOOR - WORKER_ADMISSION_FLOOR == 600
+    assert "export ZOOLOGY_MIN_REMAINING_SECONDS=11460" in run_script
+    assert "export ZOOLOGY_CONTROLLER_MIN_REMAINING_SECONDS=12060" in run_script
+    assert "repro.single_baseline admit-controller" in run_script
+    assert "repro.single_baseline admit-worker" in run_script
+    assert run_script.count('reject_single_baseline_dir "${SUITE_DIR}"') >= 4
+
+
+def test_single_baseline_finalizes_and_revalidates_result(tmp_path):
+    suite_dir = _make_completed_single_baseline(tmp_path)
+
+    result = finalize_baseline(suite_dir)
+
+    assert result["decision"] == "strong_baseline_pass"
+    assert result["strong_baseline_pass"] is True
+    assert result["kv256_diagnostic_pass"] is True
+    assert result["full_frontier_claim_allowed"] is False
+    assert result["request_sha256"] == sha256_file(
+        suite_dir / "launches" / "run-05" / "request.json"
+    )
+    assert result["launch_sha256"] == sha256_file(
+        suite_dir / "launches" / "run-05" / "launch.json"
+    )
+    assert result["terminal_sha256"] == sha256_file(
+        suite_dir / "launches" / "run-05" / "terminal.json"
+    )
+    assert result["evidence_sha256"]["logs/run-05.log"] == sha256_file(
+        suite_dir / "logs" / "run-05.log"
+    )
+    assert result["evidence_sha256"][
+        "05__d128__lr0.00316227766/metrics.jsonl"
+    ] == sha256_file(
+        suite_dir / "05__d128__lr0.00316227766" / "metrics.jsonl"
+    )
+    assert validate_result(suite_dir) == result
+    assert (suite_dir / BASELINE_RESULT_NAME).is_file()
+    assert finalize_baseline(suite_dir) == result
+
+
+def test_single_baseline_rejects_generic_worker_mode(tmp_path):
+    suite_dir, suite_manifest = _make_empty_suite(tmp_path)
+    initialize_baseline(suite_dir, 5)
+    remaining_seconds = 13_000
+    observed_unix = math.ceil(time.time())
+    _write_aistation_status(suite_dir, remaining_seconds)
+    record_admission(
+        suite_dir,
+        "controller",
+        remaining_seconds,
+        observed_unix,
+    )
+    _write_completed_cell(suite_dir, suite_manifest, 5)
+
+    with pytest.raises(RuntimeError, match="baseline worker mode"):
+        finalize_baseline(suite_dir)
+
+
+def test_single_baseline_rejects_controller_without_launch_slack(tmp_path):
+    suite_dir = _make_completed_single_baseline(tmp_path)
+    launch_path = suite_dir / "launches" / "run-05" / "launch.json"
+    launch = json.loads(launch_path.read_text(encoding="utf-8"))
+    launch["controller_minimum_remaining_seconds"] = "11460"
+    launch_path.write_text(json.dumps(launch), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="controller admission floor"):
+        finalize_baseline(suite_dir)
+
+
+def test_single_baseline_marks_kv256_diagnostic_anomaly(tmp_path):
+    suite_dir = _make_completed_single_baseline(tmp_path)
+    config = configs[5]
+    summary_path = suite_dir / (
+        f"05__d{config.model.d_model}"
+        f"__lr{float(config.learning_rate):.10g}"
+        "/summary.json"
+    )
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    summary["final_metrics"]["valid/num_kv_pairs/accuracy-256"] = 0.8
+    summary_path.write_text(json.dumps(summary), encoding="utf-8")
+    metrics_path = suite_dir / (
+        f"05__d{config.model.d_model}"
+        f"__lr{float(config.learning_rate):.10g}"
+        "/metrics.jsonl"
+    )
+    metrics_path.write_text(
+        '{"valid/accuracy": 0.9861, '
+        '"valid/num_kv_pairs/accuracy-256": 0.81}\n'
+        '{"valid/accuracy": 0.9859, '
+        '"valid/num_kv_pairs/accuracy-256": 0.8}\n',
+        encoding="utf-8",
+    )
+
+    result = finalize_baseline(suite_dir)
+
+    assert result["strong_baseline_pass"] is True
+    assert result["kv256_diagnostic_pass"] is False
+    assert result["diagnostic_anomaly"] is True
+    assert result["decision"] == "strong_baseline_pass_with_kv256_anomaly"
+
+
+def test_single_baseline_result_rejects_nonselected_cell_evidence(tmp_path):
+    suite_dir = _make_completed_single_baseline(tmp_path)
+    finalize_baseline(suite_dir)
+    (suite_dir / "run-00-metadata.json").write_text("{}\n", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="unexpected root evidence"):
+        validate_result(suite_dir)
+
+
+def test_single_baseline_result_rejects_metric_tampering(tmp_path):
+    suite_dir = _make_completed_single_baseline(tmp_path)
+    finalize_baseline(suite_dir)
+    result_path = suite_dir / BASELINE_RESULT_NAME
+    result = json.loads(result_path.read_text(encoding="utf-8"))
+    result["final_valid_accuracy"] = 1.0
+    result_path.write_text(json.dumps(result), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="single baseline result drift"):
+        validate_result(suite_dir)
+
+
+def test_single_baseline_rejects_manifest_timestamp_tampering_after_launch(
+    tmp_path,
+):
+    suite_dir = _make_completed_single_baseline(tmp_path)
+    manifest_path = suite_dir / "single-baseline-manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["created_utc"] = "2000-01-01T00:00:00+00:00"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(
+        RuntimeError,
+        match=(
+            "baseline manifest hash drift|admission evidence drift|"
+            "baseline manifest predates suite initialization"
+        ),
+    ):
+        finalize_baseline(suite_dir)
+
+
+def test_single_baseline_rejects_result_timestamp_tampering(tmp_path):
+    suite_dir = _make_completed_single_baseline(tmp_path)
+    finalize_baseline(suite_dir)
+    result_path = suite_dir / BASELINE_RESULT_NAME
+    result = json.loads(result_path.read_text(encoding="utf-8"))
+    result["recorded_utc"] = "2000-01-01T00:00:00+00:00"
+    result_path.write_text(json.dumps(result), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="single baseline result drift"):
+        validate_result(suite_dir)
+
+
+@pytest.mark.parametrize(
+    "kv256_accuracy",
+    (2.0, -0.1),
+)
+def test_single_baseline_rejects_invalid_kv256_accuracy(
+    tmp_path,
+    kv256_accuracy,
+):
+    suite_dir = _make_completed_single_baseline(tmp_path)
+    summary_path = (
+        suite_dir / "05__d128__lr0.00316227766" / "summary.json"
+    )
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    summary["final_metrics"][
+        "valid/num_kv_pairs/accuracy-256"
+    ] = kv256_accuracy
+    summary_path.write_text(json.dumps(summary), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="outside \\[0, 1\\]"):
+        finalize_baseline(suite_dir)
+
+
+def test_single_baseline_rejects_kv256_summary_log_disagreement(tmp_path):
+    suite_dir = _make_completed_single_baseline(tmp_path)
+    summary_path = (
+        suite_dir / "05__d128__lr0.00316227766" / "summary.json"
+    )
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    summary["final_metrics"]["valid/num_kv_pairs/accuracy-256"] = 0.9
+    summary_path.write_text(json.dumps(summary), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="KV256 accuracy disagrees"):
+        finalize_baseline(suite_dir)
+
+
+@pytest.mark.parametrize(
+    ("relative_path", "timestamp_field"),
+    (
+        (Path("launches/run-05/request.json"), "requested_utc"),
+        (Path("launches/run-05/terminal.json"), "ended_utc"),
+    ),
+)
+def test_single_baseline_rejects_impossible_evidence_timeline(
+    tmp_path,
+    relative_path,
+    timestamp_field,
+):
+    suite_dir = _make_completed_single_baseline(tmp_path)
+    evidence_path = suite_dir / relative_path
+    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    evidence[timestamp_field] = "2000-01-01T00:00:00+00:00"
+    evidence_path.write_text(json.dumps(evidence), encoding="utf-8")
+
+    with pytest.raises(
+        RuntimeError,
+        match=(
+            "request predates controller admission|"
+            "terminal predates worker admission"
+        ),
+    ):
+        finalize_baseline(suite_dir)
+
+
+@pytest.mark.parametrize(
+    ("relative_path", "mutation"),
+    (
+        (
+            Path("launches/run-05/launch.json"),
+            lambda payload: payload.update(
+                {"launched_utc": "2000-01-01T00:00:00+00:00"}
+            ),
+        ),
+        (
+            Path("launches/run-05/terminal.json"),
+            lambda payload: payload.update({"unexpected": True}),
+        ),
+    ),
+)
+def test_single_baseline_rejects_launch_terminal_evidence_tampering(
+    tmp_path,
+    relative_path,
+    mutation,
+):
+    suite_dir = _make_completed_single_baseline(tmp_path)
+    finalize_baseline(suite_dir)
+    evidence_path = suite_dir / relative_path
+    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    mutation(evidence)
+    evidence_path.write_text(json.dumps(evidence), encoding="utf-8")
+
+    with pytest.raises(
+        RuntimeError,
+        match=(
+            "baseline launch predates its request|baseline terminal fields drifted|"
+            "single baseline result drift"
+        ),
+    ):
+        validate_result(suite_dir)
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    (
+        Path("05__d128__lr0.00316227766/metrics.jsonl"),
+        Path("logs/run-05.log"),
+    ),
+)
+def test_single_baseline_result_binds_metrics_and_log(
+    tmp_path,
+    relative_path,
+):
+    suite_dir = _make_completed_single_baseline(tmp_path)
+    finalize_baseline(suite_dir)
+    evidence_path = suite_dir / relative_path
+    if evidence_path.name == "metrics.jsonl":
+        with evidence_path.open("a", encoding="utf-8") as handle:
+            handle.write(
+                '{"valid/num_kv_pairs/accuracy-256": 0.1}\n'
+            )
+    else:
+        evidence_path.write_text("replaced log\n", encoding="utf-8")
+
+    with pytest.raises(
+        RuntimeError,
+        match=(
+            "KV256 accuracy disagrees with metrics|"
+            "single baseline result drift"
+        ),
+    ):
+        validate_result(suite_dir)
+
+
+@pytest.mark.parametrize(
+    "unexpected_name",
+    (
+        "run-99-metadata.json",
+        "aggregate.json",
+        "frontier.csv",
+        "09__d256__lr0.00316227766",
+    ),
+)
+def test_single_baseline_rejects_unexpected_root_artifacts(
+    tmp_path,
+    unexpected_name,
+):
+    suite_dir = _make_completed_single_baseline(tmp_path)
+    unexpected = suite_dir / unexpected_name
+    if "." in unexpected_name:
+        unexpected.write_text("{}\n", encoding="utf-8")
+    else:
+        unexpected.mkdir()
+
+    with pytest.raises(RuntimeError, match="unexpected root evidence"):
+        finalize_baseline(suite_dir)
+
+
+def test_single_baseline_rejects_admission_tampering(tmp_path):
+    suite_dir = _make_completed_single_baseline(tmp_path)
+    admission_path = suite_dir / CONTROLLER_ADMISSION_NAME
+    admission = json.loads(admission_path.read_text(encoding="utf-8"))
+    admission["reported_remaining_seconds"] = 1
+    admission_path.write_text(json.dumps(admission), encoding="utf-8")
+
+    with pytest.raises(
+        RuntimeError,
+        match=(
+            "controller admission hash drift|admission evidence drift|"
+            "insufficient AIStation time"
+        ),
+    ):
+        finalize_baseline(suite_dir)
+
+
+def test_single_baseline_rejects_wrong_logical_aistation_row(tmp_path):
+    suite_dir = _make_completed_single_baseline(tmp_path)
+    status_path = suite_dir / AISTATION_STATUS_NAME
+    status = json.loads(status_path.read_text(encoding="utf-8"))
+    status["targets"][0]["wpName"] = "GPU1"
+    status_path.write_text(json.dumps(status), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="not a running GPU2 row"):
+        finalize_baseline(suite_dir)

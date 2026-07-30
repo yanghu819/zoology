@@ -47,6 +47,7 @@ def record_terminal(
     exit_code: int,
     *,
     error: str | None = None,
+    worker_admission_sha256: str | None = None,
 ) -> dict[str, Any]:
     """Atomically create the immutable terminal record for one worker."""
     payload: dict[str, Any] = {
@@ -59,22 +60,33 @@ def record_terminal(
     }
     if error is not None:
         payload["error"] = error
+    if worker_admission_sha256 is not None:
+        payload["worker_admission_sha256"] = worker_admission_sha256
     _atomic_create_json(launch_dir / "terminal.json", payload)
     return payload
 
 
-def launch_cell(root: Path, suite_dir: Path, index: int) -> dict[str, Any]:
+def launch_cell(
+    root: Path,
+    suite_dir: Path,
+    index: int,
+    worker_mode: str = "_cell-worker",
+) -> dict[str, Any]:
     """Start one worker in a new session and return its durable launch record."""
+    if worker_mode not in {"_cell-worker", "_baseline-worker"}:
+        raise ValueError(f"unsupported worker mode: {worker_mode}")
     root = root.resolve()
     suite_dir = suite_dir.resolve()
     launches_dir = suite_dir / "launches"
     launches_dir.mkdir(exist_ok=True)
     launch_dir = _launch_dir(suite_dir, index)
     launch_dir.mkdir()
+    environment = os.environ.copy()
+    environment["PYTHONUNBUFFERED"] = "1"
 
     command = [
         str(root / "run.sh"),
-        "_cell-worker",
+        worker_mode,
         str(index),
         str(suite_dir),
         str(launch_dir),
@@ -85,13 +97,18 @@ def launch_cell(root: Path, suite_dir: Path, index: int) -> dict[str, Any]:
         "cell_index": index,
         "requested_utc": _utc_now(),
         "suite_dir": str(suite_dir),
+        "worker_mode": worker_mode,
+        "baseline_manifest_sha256": environment.get(
+            "ZOOLOGY_BASELINE_MANIFEST_SHA256"
+        ),
+        "controller_admission_sha256": environment.get(
+            "ZOOLOGY_CONTROLLER_ADMISSION_SHA256"
+        ),
         "command": command,
     }
     _atomic_create_json(launch_dir / "request.json", request)
 
     launcher_log = launch_dir / "launcher.log"
-    environment = os.environ.copy()
-    environment["PYTHONUNBUFFERED"] = "1"
     try:
         with launcher_log.open("xb", buffering=0) as log_handle:
             worker = subprocess.Popen(
@@ -122,6 +139,13 @@ def launch_cell(root: Path, suite_dir: Path, index: int) -> dict[str, Any]:
         "worker_pid": worker.pid,
         "launched_utc": _utc_now(),
         "suite_dir": str(suite_dir),
+        "worker_mode": worker_mode,
+        "baseline_manifest_sha256": environment.get(
+            "ZOOLOGY_BASELINE_MANIFEST_SHA256"
+        ),
+        "controller_admission_sha256": environment.get(
+            "ZOOLOGY_CONTROLLER_ADMISSION_SHA256"
+        ),
         "launcher_log": str(launcher_log),
         "cell_log": str(suite_dir / "logs" / f"run-{index:02d}.log"),
         "terminal_record": str(launch_dir / "terminal.json"),
@@ -137,6 +161,9 @@ def launch_cell(root: Path, suite_dir: Path, index: int) -> dict[str, Any]:
         "minimum_remaining_seconds": environment.get(
             "ZOOLOGY_MIN_REMAINING_SECONDS",
             "11460",
+        ),
+        "controller_minimum_remaining_seconds": environment.get(
+            "ZOOLOGY_CONTROLLER_MIN_REMAINING_SECONDS"
         ),
     }
     _atomic_create_json(launch_dir / "launch.json", launch)
@@ -180,6 +207,11 @@ def main() -> None:
     launch_parser.add_argument("--root", type=Path, required=True)
     launch_parser.add_argument("--suite-dir", type=Path, required=True)
     launch_parser.add_argument("--index", type=int, required=True)
+    launch_parser.add_argument(
+        "--worker-mode",
+        choices=("_cell-worker", "_baseline-worker"),
+        default="_cell-worker",
+    )
 
     verify_parser = subparsers.add_parser("verify-worker")
     verify_parser.add_argument("--launch-dir", type=Path, required=True)
@@ -192,12 +224,18 @@ def main() -> None:
     terminal_parser.add_argument("--index", type=int, required=True)
     terminal_parser.add_argument("--worker-pid", type=int, required=True)
     terminal_parser.add_argument("--exit-code", type=int, required=True)
+    terminal_parser.add_argument("--worker-admission-sha256")
     args = parser.parse_args()
 
     if args.command == "launch":
         print(
             json.dumps(
-                launch_cell(args.root, args.suite_dir, args.index),
+                launch_cell(
+                    args.root,
+                    args.suite_dir,
+                    args.index,
+                    args.worker_mode,
+                ),
                 sort_keys=True,
             ),
             flush=True,
@@ -217,6 +255,7 @@ def main() -> None:
                     args.index,
                     args.worker_pid,
                     args.exit_code,
+                    worker_admission_sha256=args.worker_admission_sha256,
                 ),
                 sort_keys=True,
             ),

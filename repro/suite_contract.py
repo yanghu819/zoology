@@ -27,6 +27,7 @@ CELL_TIMEOUT_SECONDS = 10_800
 DEFAULT_MIN_REMAINING_SECONDS = 11_460
 MAX_ADMISSION_OBSERVATION_AGE_SECONDS = 600
 SUITE_MANIFEST_NAME = "suite-manifest.json"
+SINGLE_BASELINE_MANIFEST_NAME = "single-baseline-manifest.json"
 
 
 def require_suite_location(suite_dir: Path, root: Path = ROOT) -> Path:
@@ -312,6 +313,14 @@ def _cell_paths(suite_dir: Path, index: int) -> dict[str, Path]:
     }
 
 
+def _reject_single_baseline_sequence(suite_dir: Path) -> None:
+    baseline_manifest = suite_dir / SINGLE_BASELINE_MANIFEST_NAME
+    if baseline_manifest.exists() or baseline_manifest.is_symlink():
+        raise RuntimeError(
+            "single baseline directory cannot use the sequential suite contract"
+        )
+
+
 def validate_launch_terminal(suite_dir: Path, index: int) -> None:
     paths = _cell_paths(suite_dir, index)
     _require_real_directory(paths["launch_dir"])
@@ -593,6 +602,7 @@ def next_pending_index(
 ) -> int | None:
     """Return the next cell, rejecting any partial or non-contiguous history."""
     suite_dir = suite_dir.resolve()
+    _reject_single_baseline_sequence(suite_dir)
     suite_manifest = validate_suite(suite_dir, root)
     expected_metadata_names = {
         f"run-{index:02d}-metadata.json" for index in range(len(configs))
@@ -645,6 +655,7 @@ def next_pending_index(
 def prepare_cell(suite_dir: Path, index: int, root: Path = ROOT) -> None:
     """Validate cache and require ``index`` to be the exact next cell."""
     suite_dir = suite_dir.resolve()
+    _reject_single_baseline_sequence(suite_dir)
     suite_manifest = validate_suite(suite_dir, root)
     active_cache_manifest = _active_cache_manifest()
     if sha256_file(active_cache_manifest) != suite_manifest["cache_manifest_sha256"]:
