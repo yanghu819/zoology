@@ -153,6 +153,10 @@ node "${AISTATION_HELPER}" exec GPU2 -- \
   `/huyang2/zoology/runs/gdn-mqar-single-baseline-freshlease-20260731t050430z`
 - Complete failure-evidence archive:
   `gdn-mqar-single-baseline-freshlease-20260731t050430z-complete-failure-evidence.tar.gz`
+- Neutral archive tag:
+  `archive/gdn-mqar-single-baseline-20260731-p004-failed-publish-timeout`
+- GitHub failure-evidence prerelease:
+  `https://github.com/yanghu819/zoology/releases/tag/archive/gdn-mqar-single-baseline-20260731-p004-failed-publish-timeout`
 - Archive SHA-256:
   `8809941714c4bdae5c7a4802ee49f9604bd818bce7b68b175261c7f0b9808215`
 - Archive sidecar SHA-256:
@@ -237,3 +241,9 @@ no learning process ran.
 
 This is a reproduction baseline, not a competition submission. No submission
 was made and no `exp/score-*` tag is permitted because there is no score.
+
+The neutral failure-evidence tag and GitHub prerelease above were verified at
+`2026-07-31T05:41:50Z`. The annotated tag resolves to audit-correction commit
+`6e48ac24eae233dbff6e47d7e4060e62e875292c`. GitHub reports all three assets
+as uploaded with SHA-256 digests matching the local archive, archive sidecar,
+and inventory hashes in section 6.
