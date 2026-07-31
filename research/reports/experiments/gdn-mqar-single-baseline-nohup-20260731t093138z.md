@@ -4,8 +4,9 @@
 
 - Plan: `P-BASELINE-005`
 - Run: `gdn-mqar-single-baseline-nohup-20260731t093138z`
-- State: `approved`
+- State: `failed`
 - Approved UTC: `2026-07-31T09:31:38Z`
+- Terminal decision UTC: `2026-07-31T10:29:07Z`
 - Approval: the user's reply `continue` after being told that P005 required
   explicit approval
 - Target: logical AIStation `GPU2` only
@@ -22,10 +23,10 @@ remote run-specific artifact directory were absent. This is a new experiment;
 it does not reopen, recapture, relaunch, rename, or delete any earlier run.
 
 Approval did not itself allocate a GPU. The same request later became
-`Running` and passed the approved helper probe, as recorded in Section 4. The
-plan remains `approved`, without an active resource-allocation row, until all
-prelaunch gates pass and the one formal launch is actually admitted. Merely
-preparing the allocation does not claim that GDN training has started.
+`Running` and passed the approved helper probe, as recorded in Section 4. P005
+then failed its frozen lease gate before suite initialization or formal clock
+capture. It never entered `in-progress`; no controller, launch, worker, GDN
+training, model, or score was created.
 
 ## 2. Hypothesis
 
@@ -314,3 +315,85 @@ The formal start may only create the absent one-shot control directory, start
 the unchanged single Python child, and return immediately. Once that control
 directory exists, all monitoring is read-only and no command may relaunch or
 re-enter the start path.
+
+## 6. Execution and evidence
+
+The initial frozen status/probe bracket reported the exact approved workspace
+`Running` on the expected A100 with `13,658` seconds remaining. The remote
+repository was the clean detached formal SHA/tree, and the local operational
+commits and four remote launcher files were independently hash-matched.
+
+The one detached-process diagnostic started through the helper at
+`2026-07-31T10:06:47Z`; the helper returned at `10:06:49Z`. Its remote worker
+was a session leader with no controlling TTY and ran from `10:02:38Z` through
+`10:03:23Z` on the offset remote clock, exactly 45 seconds. Its terminal and
+attempt/start/worker hashes all validated, while the formal suite, controller,
+and one-shot formal control remained absent.
+
+The one durable preflight helper call returned successfully at
+`2026-07-31T10:25:23Z`. Its detached GPU2 worker ran from remote
+`10:21:12Z` through `10:24:07Z`; all four frozen steps returned zero:
+
+- `setup=0`
+- `check=0`
+- `cache=0`
+- `smoke=0`
+
+The real A100 smoke reached about 3,065 MiB and reported
+`gdn_mqar_smoke=pass` after compiling/executing the Gated DeltaNet kernel and a
+one-epoch MQAR end-to-end run. This proves the environment and GDN path work;
+it is deliberately not the requested formal baseline result.
+
+The mandatory pre-capture status check at
+`2026-07-31T10:29:06Z`–`10:29:07Z` then reported only `12,040` seconds. That is
+80 seconds below the frozen conservative `12,120` gate and 20 seconds below
+the unchanged `12,060` controller floor. P005 therefore stopped before
+`init-baseline`, formal capture, controller publication, formal start, worker,
+training, model, or score. The local/remote evidence both assert counts of
+zero for all of those formal actions.
+
+An overlong first closeout transport command hit the helper's 20-second limit;
+a read-only check proved that it created none of its four target files. A
+small uploaded closeout script with frozen local/remote SHA then created the
+evidence once. The pulled, independently checked evidence contains no links,
+special files, model, data, or checkpoint:
+
+- Remote evidence archive SHA-256:
+  `5298be0cf2cf2e782d92932ea97cbfda6d66319f3a9a8eb403b3d93b88c321e1`
+- Remote inventory SHA-256:
+  `d00a9a077fbc4a7eae26ff42e7fe71dc725887ee9cab5c3e9aadb29d799cfb2b`
+- Remote evidence files: `30`; archive regular files including inventory: `31`
+- Complete local evidence archive SHA-256:
+  `8d18c4168520dac828b84f294fbae5225dbe879b7e5bfe3a0f3359804ba76f21`
+- Complete local inventory SHA-256:
+  `f37cf4a7153ea69b5c3514920dd024fa9352fa53a2a2dc78f7ed6df282ad6551`
+- Complete evidence files: `38`; archive regular files including inventory:
+  `39`
+
+## 7. Results
+
+There is no formal `valid/accuracy`, KV256 slice, epoch record, checkpoint, or
+model for P005. The requested GDN baseline did not run. The only learning
+execution was the explicitly non-formal one-epoch smoke, whose purpose was
+path validation rather than reproduction scoring.
+
+## 8. Official comparison
+
+No numerical comparison with the official Zoology GDN point is valid because
+P005 produced no formal baseline metric. The official visual reading remains
+approximately `0.99`; reproduced accuracy and delta are blank. No
+`exp/score-*` tag is permitted.
+
+## 9. Decision and reusable lesson
+
+P005 is terminal `failed` and must not be captured, initialized, or launched
+later under this run ID. The model hypothesis is still untested.
+
+The operational insight is blunt: we opened the scarce GPU lease while still
+building and reviewing transport controls. The controls are now proven, but
+the lease clock paid for that engineering. This violates the spirit of the
+Bitter Lesson at the workflow level: reliable general automation should be
+prepared before scarce compute is allocated, not handcrafted while the GPU
+waits. A separately approved fresh attempt should reuse these exact audited
+controls immediately, add a prebuilt durable `init-baseline` envelope before
+opening GPU2, and perform no new design or audit work on the live lease.
