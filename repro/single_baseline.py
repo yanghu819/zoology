@@ -11,6 +11,11 @@ from pathlib import Path
 from typing import Any
 
 from repro.aggregate import _publish_immutable_text
+from repro.aistation_clock_bracket import (
+    SUITE_CLOCK_FILE_MAP,
+    SUITE_CLOCK_FILE_NAMES,
+    validate_suite_clock_evidence,
+)
 from repro.cache_contract import sha256_file
 from repro.configs.gdn_mqar_official import configs
 from repro.suite_contract import (
@@ -29,7 +34,9 @@ from repro.suite_contract import (
 ROOT = Path(__file__).resolve().parents[1]
 BASELINE_MANIFEST_NAME = "single-baseline-manifest.json"
 BASELINE_RESULT_NAME = "single-baseline-result.json"
-AISTATION_STATUS_NAME = "aistation-status.json"
+AISTATION_STATUS_NAME = SUITE_CLOCK_FILE_MAP["aistation-status.json"]
+CLOCK_BRACKET_NAME = SUITE_CLOCK_FILE_MAP["clock-bracket.json"]
+CLOCK_CAPTURE_TERMINAL_NAME = SUITE_CLOCK_FILE_MAP["capture-terminal.json"]
 CONTROLLER_ADMISSION_NAME = "controller-admission.json"
 WORKER_ADMISSION_NAME = "worker-admission.json"
 DEFAULT_SELECTED_INDEX = 5
@@ -188,6 +195,7 @@ def _reject_unexpected_evidence(suite_dir: Path) -> None:
         f"run-{DEFAULT_SELECTED_INDEX:02d}-metadata.json",
         selected_run_name,
     }
+    allowed_root_names.update(SUITE_CLOCK_FILE_NAMES)
     unexpected_root = sorted(
         path.name
         for path in suite_dir.iterdir()
@@ -291,6 +299,13 @@ def _admission_floor(phase: str) -> int:
     raise ValueError(f"unsupported admission phase: {phase}")
 
 
+def _clock_evidence_hashes(suite_dir: Path) -> dict[str, str]:
+    return {
+        name: sha256_file(suite_dir / name)
+        for name in SUITE_CLOCK_FILE_NAMES
+    }
+
+
 def record_admission(
     suite_dir: Path,
     phase: str,
@@ -300,13 +315,30 @@ def record_admission(
     """Publish one immutable controller or worker lease decision."""
     suite_dir = suite_dir.resolve()
     manifest = validate_baseline(suite_dir)
+    proof, status_raw = validate_suite_clock_evidence(suite_dir)
     target, status_sha256 = _load_aistation_status(suite_dir)
+    if status_raw != (suite_dir / AISTATION_STATUS_NAME).read_bytes():
+        raise RuntimeError("validated AIStation status bytes drifted")
     status_remaining = int(target["remainTime"])
     if remaining_seconds != status_remaining:
         raise RuntimeError(
             "reported remaining seconds disagree with AIStation status evidence: "
             f"argument={remaining_seconds} status={status_remaining}"
         )
+    if remaining_seconds != proof["reported_remaining_seconds"]:
+        raise RuntimeError(
+            "reported remaining seconds disagree with clock-bracket proof: "
+            f"argument={remaining_seconds} "
+            f"proof={proof['reported_remaining_seconds']}"
+        )
+    if observed_unix != proof["selected_observed_unix"]:
+        raise RuntimeError(
+            "observed Unix time disagrees with clock-bracket proof: "
+            f"argument={observed_unix} "
+            f"proof={proof['selected_observed_unix']}"
+        )
+    if target["wpId"] != proof["workspace_id"]:
+        raise RuntimeError("AIStation workspace disagrees with clock-bracket proof")
     if phase == "worker":
         _validate_baseline_launch_mode(suite_dir, DEFAULT_SELECTED_INDEX)
 
@@ -342,6 +374,13 @@ def record_admission(
         "aistation_workspace_id": target["wpId"],
         "aistation_workspace_status": target["wpStatus"],
         "aistation_status_sha256": status_sha256,
+        "clock_bracket_sha256": sha256_file(
+            suite_dir / CLOCK_BRACKET_NAME
+        ),
+        "clock_capture_terminal_sha256": sha256_file(
+            suite_dir / CLOCK_CAPTURE_TERMINAL_NAME
+        ),
+        "clock_evidence_sha256": _clock_evidence_hashes(suite_dir),
         "baseline_manifest_sha256": sha256_file(
             suite_dir / BASELINE_MANIFEST_NAME
         ),
@@ -377,7 +416,10 @@ def _validate_admission_record(
     phase: str,
 ) -> dict[str, Any]:
     manifest = validate_baseline(suite_dir)
+    proof, status_raw = validate_suite_clock_evidence(suite_dir)
     target, status_sha256 = _load_aistation_status(suite_dir)
+    if status_raw != (suite_dir / AISTATION_STATUS_NAME).read_bytes():
+        raise RuntimeError("validated AIStation status bytes drifted")
     payload = _load_object(_admission_path(suite_dir, phase))
     expected_keys = {
         "schema_version",
@@ -386,6 +428,9 @@ def _validate_admission_record(
         "aistation_workspace_id",
         "aistation_workspace_status",
         "aistation_status_sha256",
+        "clock_bracket_sha256",
+        "clock_capture_terminal_sha256",
+        "clock_evidence_sha256",
         "baseline_manifest_sha256",
         "reported_remaining_seconds",
         "observed_unix",
@@ -410,6 +455,18 @@ def _validate_admission_record(
         checked_unix = int(payload["checked_unix"])
     except (KeyError, TypeError, ValueError) as error:
         raise RuntimeError(f"{phase} admission integers are invalid") from error
+    if remaining_seconds != proof["reported_remaining_seconds"]:
+        raise RuntimeError(
+            f"{phase} admission remaining seconds drift from clock proof"
+        )
+    if observed_unix != proof["selected_observed_unix"]:
+        raise RuntimeError(
+            f"{phase} admission observed time drift from clock proof"
+        )
+    if remaining_seconds != int(target["remainTime"]):
+        raise RuntimeError(
+            f"{phase} admission remaining seconds drift from status"
+        )
     checked_at = _parse_utc_timestamp(
         payload["checked_utc"],
         f"{phase} admission checked_utc",
@@ -436,11 +493,18 @@ def _validate_admission_record(
         "aistation_workspace_id": target["wpId"],
         "aistation_workspace_status": "Running",
         "aistation_status_sha256": status_sha256,
+        "clock_bracket_sha256": sha256_file(
+            suite_dir / CLOCK_BRACKET_NAME
+        ),
+        "clock_capture_terminal_sha256": sha256_file(
+            suite_dir / CLOCK_CAPTURE_TERMINAL_NAME
+        ),
+        "clock_evidence_sha256": _clock_evidence_hashes(suite_dir),
         "baseline_manifest_sha256": sha256_file(
             suite_dir / BASELINE_MANIFEST_NAME
         ),
-        "reported_remaining_seconds": int(target["remainTime"]),
-        "observed_unix": observed_unix,
+        "reported_remaining_seconds": proof["reported_remaining_seconds"],
+        "observed_unix": proof["selected_observed_unix"],
         "observed_utc": datetime.fromtimestamp(
             observed_unix,
             timezone.utc,
@@ -459,6 +523,8 @@ def _validate_admission_record(
         raise RuntimeError(
             f"{phase} admission evidence drift: expected={expected} actual={payload}"
         )
+    if target["wpId"] != proof["workspace_id"]:
+        raise RuntimeError("AIStation workspace disagrees with clock-bracket proof")
     return payload
 
 
@@ -667,8 +733,8 @@ def initialize_baseline(suite_dir: Path, index: int) -> dict[str, Any]:
     for forbidden_name in (
         BASELINE_MANIFEST_NAME,
         BASELINE_RESULT_NAME,
-        AISTATION_STATUS_NAME,
         CONTROLLER_ADMISSION_NAME,
+        *SUITE_CLOCK_FILE_NAMES,
     ):
         forbidden = suite_dir / forbidden_name
         if forbidden.exists() or forbidden.is_symlink():
@@ -873,6 +939,13 @@ def _result_fields(suite_dir: Path, manifest: dict[str, Any]) -> dict[str, Any]:
         "aistation_target": "GPU2",
         "aistation_workspace_id": target["wpId"],
         "aistation_status_sha256": status_sha256,
+        "clock_bracket_sha256": sha256_file(
+            suite_dir / CLOCK_BRACKET_NAME
+        ),
+        "clock_capture_terminal_sha256": sha256_file(
+            suite_dir / CLOCK_CAPTURE_TERMINAL_NAME
+        ),
+        "clock_evidence_sha256": _clock_evidence_hashes(suite_dir),
         "controller_adjusted_remaining_seconds": controller_admission[
             "adjusted_remaining_seconds"
         ],
@@ -909,7 +982,7 @@ def _result_evidence_hashes(
         suite_dir / "runtime-attestation.json",
         suite_dir / SUITE_MANIFEST_NAME,
         suite_dir / BASELINE_MANIFEST_NAME,
-        suite_dir / AISTATION_STATUS_NAME,
+        *(suite_dir / name for name in SUITE_CLOCK_FILE_NAMES),
         suite_dir / CONTROLLER_ADMISSION_NAME,
         paths["metadata"],
         paths["log"],

@@ -1,12 +1,20 @@
+import hashlib
 import json
 import math
 import subprocess
 import time
 from dataclasses import replace
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
+import repro.aistation_clock_bracket as clock_bracket
+from repro.aistation_clock_bracket import (
+    REMOTE_CLOCK_COMMAND,
+    SUITE_CLOCK_FILE_MAP,
+    build_evidence,
+)
 from repro.cache_contract import (
     OFFICIAL_CONFIG_SHA256,
     frozen_cache_provenance,
@@ -38,6 +46,27 @@ from repro.suite_contract import (
 
 
 ROOT = Path(__file__).resolve().parents[1]
+TEST_CLOCK_HELPER_SNAPSHOT = (
+    b"// immutable test AIStation helper snapshot\n"
+)
+
+
+@pytest.fixture(autouse=True)
+def _resolve_precommit_clock_source(monkeypatch):
+    current_tree = subprocess.check_output(
+        ["git", "-C", str(ROOT), "rev-parse", "HEAD^{tree}"],
+        text=True,
+    ).strip()
+    monkeypatch.setattr(
+        clock_bracket,
+        "_resolve_formal_source",
+        lambda _formal_source_sha: current_tree,
+    )
+    monkeypatch.setattr(
+        clock_bracket,
+        "APPROVED_HELPER_SHA256",
+        hashlib.sha256(TEST_CLOCK_HELPER_SNAPSHOT).hexdigest(),
+    )
 
 
 def _runtime_attestation(hostname: str) -> dict:
@@ -81,8 +110,11 @@ def _write_hash_sidecar(path: Path) -> None:
     )
 
 
-def _make_empty_suite(tmp_path: Path) -> tuple[Path, dict]:
-    suite_dir = tmp_path / "suite"
+def _make_empty_suite(
+    tmp_path: Path,
+    suite_name: str = "suite",
+) -> tuple[Path, dict]:
+    suite_dir = tmp_path / suite_name
     (suite_dir / "logs").mkdir(parents=True)
     (suite_dir / "claims").mkdir()
     (suite_dir / "launches").mkdir()
@@ -642,30 +674,129 @@ def test_resume_rejects_run_directory_symlink(tmp_path):
         next_pending_index(suite_dir)
 
 
-def _write_aistation_status(
+def _canonical_json_bytes(payload: dict) -> bytes:
+    return (json.dumps(payload, sort_keys=True, indent=2) + "\n").encode(
+        "utf-8"
+    )
+
+
+def _clock_exec_payload(observed_unix: int) -> dict:
+    return {
+        "command": "exec",
+        "ok": True,
+        "targets": [
+            {
+                "wpName": "GPU2",
+                "wpId": "workspace-test-gpu2",
+                "wpStatus": "Running",
+                "exec": {
+                    "ok": True,
+                    "exitCode": 0,
+                    "stdout": (
+                        "HOST=baseline\n"
+                        "BOOT_ID=12345678-1234-1234-1234-123456789abc\n"
+                        f"UNIX={observed_unix}\n"
+                    ),
+                },
+            }
+        ],
+        "actions": [],
+    }
+
+
+def _write_clock_evidence(
     suite_dir: Path,
     remaining_seconds: int,
+    observed_unix: int,
 ) -> None:
-    (suite_dir / AISTATION_STATUS_NAME).write_text(
-        json.dumps(
-            {
-                "command": "status",
-                "ok": True,
-                "targets": [
-                    {
-                        "wpName": "GPU2",
-                        "wpId": "workspace-test-gpu2",
-                        "wpStatus": "Running",
-                        "image": "test-image",
-                        "resource": "GPU:1",
-                        "remainTime": str(remaining_seconds),
-                    }
-                ],
-                "actions": [],
-            }
-        ),
-        encoding="utf-8",
+    suite_manifest = json.loads(
+        (suite_dir / "suite-manifest.json").read_text(encoding="utf-8")
     )
+    status_payload = {
+        "command": "status",
+        "ok": True,
+        "targets": [
+            {
+                "wpName": "GPU2",
+                "wpId": "workspace-test-gpu2",
+                "wpStatus": "Running",
+                "image": "test-image",
+                "resource": "GPU:1",
+                "remainTime": str(remaining_seconds),
+            }
+        ],
+        "actions": [],
+    }
+    before_payload = _clock_exec_payload(observed_unix)
+    after_payload = _clock_exec_payload(observed_unix + 1)
+    before_raw = _canonical_json_bytes(before_payload)
+    status_raw = _canonical_json_bytes(status_payload)
+    after_raw = _canonical_json_bytes(after_payload)
+    helper_snapshot = TEST_CLOCK_HELPER_SNAPSHOT
+    helper_sha256 = hashlib.sha256(helper_snapshot).hexdigest()
+    module_sha256 = sha256_file(
+        ROOT / "repro" / "aistation_clock_bracket.py"
+    )
+    capture_started_utc = datetime.fromtimestamp(
+        observed_unix,
+        timezone.utc,
+    ).isoformat()
+    capture_ended_utc = datetime.fromtimestamp(
+        observed_unix + 1,
+        timezone.utc,
+    ).isoformat()
+    proof = build_evidence(
+        before_payload,
+        before_raw,
+        status_payload,
+        status_raw,
+        after_payload,
+        after_raw,
+        run_id=suite_dir.name,
+        formal_source_sha=suite_manifest["git_sha"],
+        formal_source_tree=suite_manifest["git_tree"],
+        helper_sha256=helper_sha256,
+        module_sha256=module_sha256,
+        capture_started_utc=capture_started_utc,
+        capture_ended_utc=capture_ended_utc,
+        capture_elapsed_seconds=1.0,
+    )
+    attempt = {
+        "schema_version": 1,
+        "run_id": suite_dir.name,
+        "formal_source_sha": suite_manifest["git_sha"],
+        "formal_source_tree": suite_manifest["git_tree"],
+        "target": "GPU2",
+        "helper_sha256": helper_sha256,
+        "module_sha256": module_sha256,
+        "capture_started_utc": capture_started_utc,
+    }
+    captured = {
+        "capture-attempt.json": _canonical_json_bytes(attempt),
+        "helper-snapshot.js": helper_snapshot,
+        "remote-before.json": before_raw,
+        "aistation-status.json": status_raw,
+        "remote-after.json": after_raw,
+        "clock-bracket.json": _canonical_json_bytes(proof),
+    }
+    terminal = {
+        "schema_version": 1,
+        "run_id": suite_dir.name,
+        "formal_source_sha": suite_manifest["git_sha"],
+        "formal_source_tree": suite_manifest["git_tree"],
+        "status": "completed",
+        "capture_ended_utc": capture_ended_utc,
+        "files_sha256": {
+            name: hashlib.sha256(raw).hexdigest()
+            for name, raw in captured.items()
+        },
+        "error_type": None,
+        "error": None,
+    }
+    captured["capture-terminal.json"] = _canonical_json_bytes(terminal)
+    assert set(captured) == set(SUITE_CLOCK_FILE_MAP)
+    for capture_name, suite_name in SUITE_CLOCK_FILE_MAP.items():
+        (suite_dir / suite_name).write_bytes(captured[capture_name])
 
 
 def _make_completed_single_baseline(tmp_path: Path) -> Path:
@@ -673,7 +804,7 @@ def _make_completed_single_baseline(tmp_path: Path) -> Path:
     initialize_baseline(suite_dir, 5)
     remaining_seconds = 13_000
     observed_unix = math.ceil(time.time())
-    _write_aistation_status(suite_dir, remaining_seconds)
+    _write_clock_evidence(suite_dir, remaining_seconds, observed_unix)
     record_admission(
         suite_dir,
         "controller",
@@ -808,6 +939,19 @@ def test_single_baseline_finalizes_and_revalidates_result(tmp_path):
     ] == sha256_file(
         suite_dir / "05__d128__lr0.00316227766" / "metrics.jsonl"
     )
+    assert set(SUITE_CLOCK_FILE_MAP.values()).issubset(
+        result["evidence_sha256"]
+    )
+    assert result["clock_bracket_sha256"] == sha256_file(
+        suite_dir / "clock-bracket.json"
+    )
+    assert result["clock_capture_terminal_sha256"] == sha256_file(
+        suite_dir / "clock-capture-terminal.json"
+    )
+    assert result["clock_evidence_sha256"] == {
+        name: sha256_file(suite_dir / name)
+        for name in SUITE_CLOCK_FILE_MAP.values()
+    }
     assert validate_result(suite_dir) == result
     assert (suite_dir / BASELINE_RESULT_NAME).is_file()
     assert finalize_baseline(suite_dir) == result
@@ -818,7 +962,7 @@ def test_single_baseline_rejects_generic_worker_mode(tmp_path):
     initialize_baseline(suite_dir, 5)
     remaining_seconds = 13_000
     observed_unix = math.ceil(time.time())
-    _write_aistation_status(suite_dir, remaining_seconds)
+    _write_clock_evidence(suite_dir, remaining_seconds, observed_unix)
     record_admission(
         suite_dir,
         "controller",
@@ -829,6 +973,34 @@ def test_single_baseline_rejects_generic_worker_mode(tmp_path):
 
     with pytest.raises(RuntimeError, match="baseline worker mode"):
         finalize_baseline(suite_dir)
+
+
+@pytest.mark.parametrize(
+    ("remaining_delta", "observed_delta", "expected_message"),
+    (
+        (1, 0, "remaining seconds disagree with"),
+        (0, 1, "observed Unix time disagrees with"),
+    ),
+)
+def test_single_baseline_admission_arguments_must_match_clock_proof(
+    tmp_path,
+    remaining_delta,
+    observed_delta,
+    expected_message,
+):
+    suite_dir, _ = _make_empty_suite(tmp_path)
+    initialize_baseline(suite_dir, 5)
+    remaining_seconds = 13_000
+    observed_unix = math.ceil(time.time())
+    _write_clock_evidence(suite_dir, remaining_seconds, observed_unix)
+
+    with pytest.raises(RuntimeError, match=expected_message):
+        record_admission(
+            suite_dir,
+            "controller",
+            remaining_seconds + remaining_delta,
+            observed_unix + observed_delta,
+        )
 
 
 def test_single_baseline_rejects_controller_without_launch_slack(tmp_path):
@@ -1093,7 +1265,7 @@ def test_single_baseline_rejects_admission_tampering(tmp_path):
         RuntimeError,
         match=(
             "controller admission hash drift|admission evidence drift|"
-            "insufficient AIStation time"
+            "insufficient AIStation time|drift from clock proof"
         ),
     ):
         finalize_baseline(suite_dir)
@@ -1106,5 +1278,71 @@ def test_single_baseline_rejects_wrong_logical_aistation_row(tmp_path):
     status["targets"][0]["wpName"] = "GPU1"
     status_path.write_text(json.dumps(status), encoding="utf-8")
 
-    with pytest.raises(RuntimeError, match="not a running GPU2 row"):
+    with pytest.raises(
+        RuntimeError,
+        match="not a running GPU2 row|target must be literal GPU2",
+    ):
         finalize_baseline(suite_dir)
+
+
+def test_single_baseline_rejects_missing_clock_evidence(tmp_path):
+    suite_dir = _make_completed_single_baseline(tmp_path)
+    (suite_dir / "clock-remote-before.json").unlink()
+
+    with pytest.raises(RuntimeError, match="clock|missing|regular file"):
+        finalize_baseline(suite_dir)
+
+
+def test_single_baseline_rejects_tampered_clock_proof(tmp_path):
+    suite_dir = _make_completed_single_baseline(tmp_path)
+    proof_path = suite_dir / "clock-bracket.json"
+    proof = json.loads(proof_path.read_text(encoding="utf-8"))
+    proof["selected_observed_unix"] += 1
+    proof_path.write_text(json.dumps(proof), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="clock-bracket|clock capture|drift"):
+        finalize_baseline(suite_dir)
+
+
+@pytest.mark.parametrize(
+    "evidence_name",
+    (
+        "clock-helper-snapshot.js",
+        "clock-capture-terminal.json",
+    ),
+)
+def test_single_baseline_rejects_tampered_clock_lifecycle_evidence(
+    tmp_path,
+    evidence_name,
+):
+    suite_dir = _make_completed_single_baseline(tmp_path)
+    evidence_path = suite_dir / evidence_name
+    evidence_path.write_bytes(evidence_path.read_bytes() + b"\ntampered\n")
+
+    with pytest.raises(RuntimeError, match="clock|helper|terminal|hash|JSON"):
+        finalize_baseline(suite_dir)
+
+
+def test_single_baseline_rejects_clock_evidence_replayed_to_another_run(
+    tmp_path,
+):
+    source_dir, _ = _make_empty_suite(tmp_path / "source", "source-run")
+    initialize_baseline(source_dir, 5)
+    remaining_seconds = 13_000
+    observed_unix = math.ceil(time.time())
+    _write_clock_evidence(source_dir, remaining_seconds, observed_unix)
+
+    target_dir, _ = _make_empty_suite(tmp_path / "target", "target-run")
+    initialize_baseline(target_dir, 5)
+    for suite_name in SUITE_CLOCK_FILE_MAP.values():
+        (target_dir / suite_name).write_bytes(
+            (source_dir / suite_name).read_bytes()
+        )
+
+    with pytest.raises(RuntimeError, match="run id|suite path|suite"):
+        record_admission(
+            target_dir,
+            "controller",
+            remaining_seconds,
+            observed_unix,
+        )
