@@ -4,16 +4,19 @@
 
 - Plan: `P-BASELINE-006`
 - Run: `gdn-mqar-single-baseline-durable-20260731t120840z`
-- State: `approved`
+- State: `approved / allocation Pending`
 - Proposed UTC: `2026-07-31T12:08:40Z`
 - Approved UTC: `2026-07-31T14:13:12Z`
 - Approval: the user explicitly authorized replacing the expired GPU2
   environment with a fresh otherwise-identical GPU2 environment and retiring
   the old one after the proposal was pushed and GitHub-verified
 - Target: logical AIStation `GPU2` only
-- GPU2 workspace discovery: request
+- GPU2 workspace discovery: expired request
   `5186b27a-139a-4eb7-8b99-4ad64683c64f` was `Halt` with reported remaining
-  time `-312` seconds; rebuild/open is approved but not yet invoked
+  time `-312` seconds
+- GPU2 replacement request:
+  `34cad2d9-a825-416f-a644-8279b2084331`, `Pending`, opened at
+  `2026-07-31T14:16:10Z`; no probe or SSH has been attempted
 - Remote root: `/huyang2/zoology`
 - Formal source SHA:
   `13f880b5fe61619a1006ef33610de69fbabaaec1`
@@ -415,7 +418,10 @@ initial admission capture below can do that.
     if (
         type(target) is not dict
         or target.get("wpName") != "GPU2"
-        or target.get("wpId") != sys.argv[2]
+        or type(target.get("wpId")) is not str
+        or not target.get("wpId")
+        or target.get("wpId") == sys.argv[2]
+        or target.get("image") != "192.168.108.1:5000/pytorch/ptv-qianliujia:python310_torch2.7"
         or target.get("wpStatus") not in {"Pending", "Queuing", "Running"}
         or actions != [{"target": "GPU2", "action": "start_requested", "previousStatus": "Halt"}]
     ):
@@ -681,7 +687,14 @@ be uploaded to GitHub.
 
 ## 6. Artifacts
 
-Not created. P006 is proposed and unapproved.
+- Local discovery response:
+  `artifacts/admission-gdn-mqar-single-baseline-durable-20260731t120840z/status-discovery-0001.json`,
+  SHA-256 `d31636ad5c38e8732261347ed68d24e394c0b257c22cd8ffd6ec03a3ccf289de`
+- Local one-shot open response:
+  `artifacts/admission-gdn-mqar-single-baseline-durable-20260731t120840z/open-0001.json`,
+  SHA-256 `4ee1107fbfac4513bfe47b572b77718b70fc1d148df219d52d63989a0466c8ee`
+- Formal controller, suite, worker, training, model, and score artifacts: not
+  created
 
 ## 7. Results
 
@@ -689,7 +702,9 @@ Not run. No formal GDN metric exists for P006.
 
 ## 8. Conclusions
 
-Approved for one fresh GPU2 rebuild and execution; not yet launched.
+The expired GPU2 request was replaced exactly once. The new request is
+Pending, so P006 is wait-only: do not probe, SSH, open again, or launch until a
+fresh strict status reports Running, exact A100, and the 13,200-second floor.
 
 ## 9. Submission record
 
