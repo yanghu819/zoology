@@ -4,17 +4,17 @@
 
 - Plan: `P-BASELINE-002`
 - Run: `gdn-mqar-single-baseline-clockbracket-20260731T023001Z`
-- State: `approved`
+- State: `in-progress`
 - Approved UTC: `2026-07-31T02:30:01Z`
+- Started UTC (GPU2 remote observation): `2026-07-31T03:18:10Z`
 - Approval: the user's post-closeout instruction `continue`
 - Target: logical AIStation `GPU2`
 - Remote root: `/huyang2/zoology`
 - Run directory:
   `/huyang2/zoology/runs/gdn-mqar-single-baseline-clockbracket-20260731T023001Z`
 - Parent experiment: `P-BASELINE-001`, terminal `failed`
-- Formal source: the clean detached Git HEAD captured by the immutable suite
-  manifest at initialization. Its exact SHA and tree will be copied into
-  section 6 after terminal validation.
+- Formal source SHA: `13f880b5fe61619a1006ef33610de69fbabaaec1`
+- Formal source tree: `ed83a7188351ca2cce8aba46d1cb3b108ce31ec2`
 
 This is a separately approved experiment with a new plan, run, suite, source
 snapshot, and evidence graph. It does not reopen, repair, overwrite, or retry
@@ -101,6 +101,12 @@ or threshold may change after approval.
   `/Users/torusmini/.codex/skills/aistation-skill/scripts/aistation_api.js`
 - Approved AIStation helper SHA-256:
   `628aefaa2de3eb09ad5e6e1397e04280650e01847da2d9192566137405230226`
+- AIStation workspace request:
+  `63e6715f-0e16-4128-87f2-97d867d2d602`
+- Allocated GPU: `NVIDIA A100-SXM4-80GB`
+- GPU UUID: `GPU-573c7ed1-1c51-8334-299b-edf2ff3440e6`
+- GPU2 hostname: `c1psj7eh98ftq-0`
+- GPU2 boot ID: `08d861e6-ce7b-4fe8-ba78-de529efd1b31`
 - Formal execution requires:
   - exact pushed source SHA and tree;
   - clean detached checkout;
