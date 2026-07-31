@@ -21,6 +21,9 @@ CONTROL_NAME = "linux-exact-test-gate"
 EXPECTED_TESTS = 53
 PYTEST_TIMEOUT_SECONDS = 300
 FIXED_SOURCE_SHA256 = {
+    "research/control/durable_linux_exact_test_gate.sh": (
+        "164e6d8cb4b3dfd03455e6ef3825e6ba80a31ae73effa6a2509478946eab13c1"
+    ),
     "research/control/durable_init_baseline.sh": (
         "26ed9ba1dd0cff7cd2c15a2ab372077b79abd33e5c69ce7dcd8a4d3a77a27541"
     ),
@@ -41,6 +44,9 @@ FIXED_SOURCE_SHA256 = {
     ),
 }
 RUNTIME_COPY_BY_SOURCE = {
+    "research/control/durable_linux_exact_test_gate.sh": (
+        "durable_linux_exact_test_gate.sh"
+    ),
     "research/control/durable_init_baseline.sh": "durable_init_baseline.sh",
     "research/control/durable_preflight_v2.sh": "durable_preflight_v2.sh",
     "research/control/durable_publish_launch_start.sh": (

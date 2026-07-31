@@ -144,8 +144,8 @@ def test_gate_contract_is_syntactically_valid_and_freezes_five_modules():
     subprocess.run(["python3", "-m", "py_compile", str(SCRIPT)], check=True)
     assert gate.EXPECTED_TESTS == 53
     assert gate.PYTEST_TIMEOUT_SECONDS == 300
-    assert len(gate.FIXED_SOURCE_SHA256) == 6
-    assert len(gate.RUNTIME_COPY_BY_SOURCE) == 4
+    assert len(gate.FIXED_SOURCE_SHA256) == 7
+    assert len(gate.RUNTIME_COPY_BY_SOURCE) == 5
     for relative_name, expected_hash in gate.FIXED_SOURCE_SHA256.items():
         assert _sha256(ROOT / relative_name) == expected_hash
     assert list(gate.TEST_MODULE_SHA256) == [
@@ -235,8 +235,8 @@ def test_gate_runs_with_repo_local_outputs_and_records_exact_success(tmp_path):
     assert attempt["command"][0] == str(repo / ".venv" / "bin" / "python")
     assert (repo / ".venv" / "bin" / "python").is_symlink()
     assert attempt["environment_overrides"]["CUDA_VISIBLE_DEVICES"] == ""
-    assert len(attempt["source_sha256"]) == 7
-    assert len(attempt["runtime_copy_sha256"]) == 4
+    assert len(attempt["source_sha256"]) == 8
+    assert len(attempt["runtime_copy_sha256"]) == 5
     for key in ("PYTHONPYCACHEPREFIX", "TMPDIR", "TEMP", "TMP"):
         assert Path(attempt["environment_overrides"][key]).is_relative_to(control)
     assert not (repo / ".pytest_cache").exists()

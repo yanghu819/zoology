@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import json
 import os
+import platform
 import re
 import shutil
 import stat
@@ -13,8 +14,10 @@ import subprocess
 import sys
 import time
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Callable
+
+from repro import aistation_clock_bracket as clock_bracket
 
 
 TARGET = "GPU2"
@@ -28,6 +31,12 @@ APPROVED_HELPER_SHA256 = (
     "628aefaa2de3eb09ad5e6e1397e04280650e01847da2d9192566137405230226"
 )
 HELPER_TIMEOUT_SECONDS = 30
+PUSH_HELPER_TIMEOUT_SECONDS = 620
+EXPECTED_PYTHON_EXECUTABLE = (
+    "/Library/Developer/CommandLineTools/Library/Frameworks/"
+    "Python3.framework/Versions/3.9/bin/python3.9"
+)
+EXPECTED_PYTHON_VERSION = "3.9.6"
 REMOTE_IDENTITY_COMMAND = (
     "printf 'HOST='; hostname; "
     "printf 'BOOT_ID='; cat /proc/sys/kernel/random/boot_id; "
@@ -50,12 +59,16 @@ PHASE_RAW_NAMES = {
     },
 }
 RUN_ID_PATTERN = re.compile(r"[a-z0-9][a-z0-9-]*")
+STAGE_PATTERN = re.compile(r"[a-z0-9][a-z0-9-]*")
 SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
+GIT_OBJECT_PATTERN = re.compile(r"[0-9a-f]{40}")
 HOSTNAME_PATTERN = re.compile(r"[A-Za-z0-9._-]+")
 BOOT_ID_PATTERN = re.compile(
     r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-"
     r"[0-9a-f]{4}-[0-9a-f]{12}"
 )
+CLOCK_BINDING_ATTEMPT_NAME = "clock-binding-attempt.json"
+CLOCK_BINDING_NAME = "clock-binding.json"
 
 
 class AdmissionGateError(RuntimeError):
@@ -262,12 +275,23 @@ def _run_helper(
     helper: Path,
     arguments: tuple[str, ...],
 ) -> subprocess.CompletedProcess:
+    return _run_helper_with_timeout(
+        node, helper, arguments, HELPER_TIMEOUT_SECONDS
+    )
+
+
+def _run_helper_with_timeout(
+    node: Path,
+    helper: Path,
+    arguments: tuple[str, ...],
+    timeout_seconds: int,
+) -> subprocess.CompletedProcess:
     return subprocess.run(
         [str(node), str(helper), *arguments],
         check=False,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        timeout=HELPER_TIMEOUT_SECONDS,
+        timeout=timeout_seconds,
     )
 
 
@@ -290,6 +314,25 @@ def _phase_paths(output_dir: Path, phase: str) -> dict[str, Path]:
     }
 
 
+def _require_python_runtime() -> tuple[str, str]:
+    try:
+        executable = str(Path(sys.executable).resolve(strict=True))
+    except OSError as error:
+        raise AdmissionGateError(
+            f"cannot resolve Python executable: {error}"
+        ) from error
+    version = platform.python_version()
+    if executable != EXPECTED_PYTHON_EXECUTABLE:
+        raise AdmissionGateError(
+            "Python executable differs from the frozen local runtime"
+        )
+    if version != EXPECTED_PYTHON_VERSION:
+        raise AdmissionGateError(
+            "Python version differs from the frozen local runtime"
+        )
+    return executable, version
+
+
 def _prepare_context(
     helper: Path,
     output_dir: Path,
@@ -299,6 +342,7 @@ def _prepare_context(
     *,
     require_reserved_absent: bool = True,
 ) -> tuple[Path, Path, Path]:
+    _require_python_runtime()
     _validate_run_id(run_id)
     if phase not in PHASE_FLOORS:
         raise AdmissionGateError(f"unsupported admission phase: {phase}")
@@ -383,6 +427,8 @@ def _validate_observation(
         "helper_path",
         "helper_sha256",
         "node_path",
+        "python_executable",
+        "python_version",
         "module_sha256",
         "raw_files_sha256",
         "initial_observation_sha256",
@@ -400,6 +446,8 @@ def _validate_observation(
         "minimum_remaining_seconds": PHASE_FLOORS[phase],
         "helper_path": str(APPROVED_HELPER_PATH),
         "helper_sha256": APPROVED_HELPER_SHA256,
+        "python_executable": EXPECTED_PYTHON_EXECUTABLE,
+        "python_version": EXPECTED_PYTHON_VERSION,
         "module_sha256": _module_sha256(),
     }
     for key, expected in expected_values.items():
@@ -500,8 +548,312 @@ def verify_observation(
     return observation
 
 
+def _require_git_object(value: str, label: str) -> str:
+    if type(value) is not str or GIT_OBJECT_PATTERN.fullmatch(value) is None:
+        raise AdmissionGateError(
+            f"{label} must be 40 lowercase hexadecimal characters"
+        )
+    return value
+
+
+def _clock_binding_paths(output_dir: Path) -> tuple[Path, Path]:
+    return (
+        output_dir / CLOCK_BINDING_ATTEMPT_NAME,
+        output_dir / CLOCK_BINDING_NAME,
+    )
+
+
+def _clock_binding_attempt(
+    run_id: str,
+    formal_source_sha: str,
+    formal_source_tree: str,
+    module_sha256: str,
+) -> dict[str, Any]:
+    return {
+        "schema_version": 1,
+        "kind": "aistation-clock-binding-attempt",
+        "run_id": run_id,
+        "target": TARGET,
+        "formal_source_sha": formal_source_sha,
+        "formal_source_tree": formal_source_tree,
+        "python_executable": EXPECTED_PYTHON_EXECUTABLE,
+        "python_version": EXPECTED_PYTHON_VERSION,
+        "admission_module_sha256": module_sha256,
+    }
+
+
+def _prepare_clock_binding_context(
+    output_dir: Path,
+    run_id: str,
+    formal_source_sha: str,
+    formal_source_tree: str,
+    module_sha256: str,
+) -> tuple[Path, str, str, str]:
+    module_sha256 = _require_module_sha256(module_sha256)
+    formal_source_sha = _require_git_object(
+        formal_source_sha, "formal source SHA"
+    )
+    formal_source_tree = _require_git_object(
+        formal_source_tree, "formal source tree"
+    )
+    _, output_dir, _ = _prepare_context(
+        APPROVED_HELPER_PATH,
+        output_dir,
+        run_id,
+        "pre-capture",
+        _resolve_node(),
+        require_reserved_absent=False,
+    )
+    return output_dir, formal_source_sha, formal_source_tree, module_sha256
+
+
+def _load_clock_binding_attempt(
+    attempt_path: Path,
+    expected: dict[str, Any],
+) -> bytes:
+    raw = _real_file(attempt_path, "clock-binding attempt").read_bytes()
+    payload = _load_object(raw, "clock-binding attempt")
+    if raw != _canonical_json(payload) or payload != expected:
+        raise AdmissionGateError("clock-binding attempt evidence drift")
+    return raw
+
+
+def _validated_clock_bundle(
+    bundle_dir: Path,
+) -> tuple[dict[str, Any], dict[str, bytes], dict[str, str]]:
+    try:
+        proof, _ = clock_bracket.validate_bundle(bundle_dir)
+    except Exception as error:
+        raise AdmissionGateError(
+            f"formal clock bundle validation failed: {error}"
+        ) from error
+    raw_files = {
+        name: _real_file(
+            bundle_dir / name, f"clock bundle {name}"
+        ).read_bytes()
+        for name in clock_bracket.CAPTURE_FILE_NAMES
+    }
+    for name in (
+        "capture-attempt.json",
+        "clock-bracket.json",
+        "capture-terminal.json",
+    ):
+        payload = _load_object(raw_files[name], f"clock bundle {name}")
+        if raw_files[name] != clock_bracket._canonical_json(payload):
+            raise AdmissionGateError(
+                f"formal clock bundle file is not canonical: {name}"
+            )
+    hashes = {
+        name: _sha256_bytes(raw) for name, raw in raw_files.items()
+    }
+    try:
+        refreshed_proof, _ = clock_bracket.validate_bundle(bundle_dir)
+    except Exception as error:
+        raise AdmissionGateError(
+            f"formal clock bundle revalidation failed: {error}"
+        ) from error
+    refreshed_raw = {
+        name: _real_file(
+            bundle_dir / name, f"refreshed clock bundle {name}"
+        ).read_bytes()
+        for name in clock_bracket.CAPTURE_FILE_NAMES
+    }
+    if refreshed_proof != proof or refreshed_raw != raw_files:
+        raise AdmissionGateError("formal clock bundle drifted during binding")
+    return proof, raw_files, hashes
+
+
+def _build_clock_binding(
+    output_dir: Path,
+    bundle_dir: Path,
+    run_id: str,
+    formal_source_sha: str,
+    formal_source_tree: str,
+    module_sha256: str,
+    attempt_raw: bytes,
+) -> dict[str, Any]:
+    initial, initial_raw = _validate_observation(
+        output_dir, run_id, "initial"
+    )
+    pre_capture, pre_capture_raw = _validate_observation(
+        output_dir,
+        run_id,
+        "pre-capture",
+        expected_initial=initial,
+    )
+    proof, _, bundle_hashes = _validated_clock_bundle(bundle_dir)
+    expected_proof = {
+        "run_id": run_id,
+        "target": TARGET,
+        "workspace_id": pre_capture["workspace_id"],
+        "remote_hostname": pre_capture["remote_hostname"],
+        "remote_boot_id": pre_capture["remote_boot_id"],
+        "formal_source_sha": formal_source_sha,
+        "formal_source_tree": formal_source_tree,
+        "helper_sha256": pre_capture["helper_sha256"],
+    }
+    for key, expected in expected_proof.items():
+        if type(proof.get(key)) is not type(expected) or proof[key] != expected:
+            raise AdmissionGateError(f"clock/admission binding drift: {key}")
+    selected_unix = proof.get("selected_observed_unix")
+    if type(selected_unix) is not int:
+        raise AdmissionGateError("clock selected Unix time is invalid")
+    if selected_unix < pre_capture["remote_unix"]:
+        raise AdmissionGateError(
+            "formal clock time precedes the pre-capture observation"
+        )
+    refreshed_initial, refreshed_initial_raw = _validate_observation(
+        output_dir, run_id, "initial"
+    )
+    refreshed_pre, refreshed_pre_raw = _validate_observation(
+        output_dir,
+        run_id,
+        "pre-capture",
+        expected_initial=refreshed_initial,
+    )
+    if (
+        refreshed_initial != initial
+        or refreshed_initial_raw != initial_raw
+        or refreshed_pre != pre_capture
+        or refreshed_pre_raw != pre_capture_raw
+    ):
+        raise AdmissionGateError(
+            "admission observations drifted during clock binding"
+        )
+    return {
+        "schema_version": 1,
+        "kind": "aistation-clock-binding",
+        "run_id": run_id,
+        "target": TARGET,
+        "workspace_id": pre_capture["workspace_id"],
+        "remote_hostname": pre_capture["remote_hostname"],
+        "remote_boot_id": pre_capture["remote_boot_id"],
+        "pre_capture_remote_unix": pre_capture["remote_unix"],
+        "clock_selected_observed_unix": selected_unix,
+        "formal_source_sha": formal_source_sha,
+        "formal_source_tree": formal_source_tree,
+        "helper_sha256": pre_capture["helper_sha256"],
+        "python_executable": pre_capture["python_executable"],
+        "python_version": pre_capture["python_version"],
+        "admission_module_sha256": module_sha256,
+        "clock_module_sha256": proof["module_sha256"],
+        "binding_attempt_sha256": _sha256_bytes(attempt_raw),
+        "initial_observation_sha256": _sha256_bytes(initial_raw),
+        "pre_capture_observation_sha256": _sha256_bytes(pre_capture_raw),
+        "clock_bracket_sha256": bundle_hashes["clock-bracket.json"],
+        "capture_terminal_sha256": bundle_hashes["capture-terminal.json"],
+        "bundle_files_sha256": bundle_hashes,
+    }
+
+
+def bind_clock(
+    output_dir: Path,
+    bundle_dir: Path,
+    run_id: str,
+    formal_source_sha: str,
+    formal_source_tree: str,
+    module_sha256: str,
+) -> dict[str, Any]:
+    (
+        output_dir,
+        formal_source_sha,
+        formal_source_tree,
+        module_sha256,
+    ) = _prepare_clock_binding_context(
+        output_dir,
+        run_id,
+        formal_source_sha,
+        formal_source_tree,
+        module_sha256,
+    )
+    attempt_path, binding_path = _clock_binding_paths(output_dir)
+    for path in (attempt_path, binding_path):
+        if path.exists() or path.is_symlink():
+            raise FileExistsError(f"clock-binding output already exists: {path}")
+    attempt = _clock_binding_attempt(
+        run_id,
+        formal_source_sha,
+        formal_source_tree,
+        module_sha256,
+    )
+    attempt_raw = _canonical_json(attempt)
+    _write_exclusive(attempt_path, attempt_raw)
+    binding = _build_clock_binding(
+        output_dir,
+        bundle_dir,
+        run_id,
+        formal_source_sha,
+        formal_source_tree,
+        module_sha256,
+        attempt_raw,
+    )
+    if _load_clock_binding_attempt(attempt_path, attempt) != attempt_raw:
+        raise AdmissionGateError("clock-binding attempt changed before commit")
+    _write_exclusive(binding_path, _canonical_json(binding))
+    return verify_clock_binding(
+        output_dir,
+        bundle_dir,
+        run_id,
+        formal_source_sha,
+        formal_source_tree,
+        module_sha256,
+    )
+
+
+def verify_clock_binding(
+    output_dir: Path,
+    bundle_dir: Path,
+    run_id: str,
+    formal_source_sha: str,
+    formal_source_tree: str,
+    module_sha256: str,
+) -> dict[str, Any]:
+    (
+        output_dir,
+        formal_source_sha,
+        formal_source_tree,
+        module_sha256,
+    ) = _prepare_clock_binding_context(
+        output_dir,
+        run_id,
+        formal_source_sha,
+        formal_source_tree,
+        module_sha256,
+    )
+    attempt_path, binding_path = _clock_binding_paths(output_dir)
+    expected_attempt = _clock_binding_attempt(
+        run_id,
+        formal_source_sha,
+        formal_source_tree,
+        module_sha256,
+    )
+    attempt_raw = _load_clock_binding_attempt(
+        attempt_path, expected_attempt
+    )
+    expected_binding = _build_clock_binding(
+        output_dir,
+        bundle_dir,
+        run_id,
+        formal_source_sha,
+        formal_source_tree,
+        module_sha256,
+        attempt_raw,
+    )
+    binding_raw = _real_file(binding_path, "clock binding").read_bytes()
+    binding = _load_object(binding_raw, "clock binding")
+    if (
+        binding_raw != _canonical_json(binding)
+        or binding != expected_binding
+    ):
+        raise AdmissionGateError("clock-binding evidence drift")
+    return binding
+
+
 HelperRunner = Callable[
     [Path, Path, tuple[str, ...]], subprocess.CompletedProcess
+]
+OperationRunner = Callable[
+    [Path, Path, tuple[str, ...], int], subprocess.CompletedProcess
 ]
 ClockSampler = Callable[[], tuple[int, int]]
 
@@ -650,6 +1002,8 @@ def capture_observation(
         "helper_path": str(helper),
         "helper_sha256": APPROVED_HELPER_SHA256,
         "node_path": str(node),
+        "python_executable": EXPECTED_PYTHON_EXECUTABLE,
+        "python_version": EXPECTED_PYTHON_VERSION,
         "module_sha256": module_sha256,
         "raw_files_sha256": raw_hashes,
         "initial_observation_sha256": (
@@ -661,6 +1015,366 @@ def capture_observation(
         output_dir, run_id, phase, expected_initial=initial
     )
     return verified
+
+
+def _validate_stage(stage: str) -> str:
+    if type(stage) is not str or STAGE_PATTERN.fullmatch(stage) is None:
+        raise AdmissionGateError(
+            "operation stage must contain lowercase letters, digits, or dashes"
+        )
+    return stage
+
+
+def _operation_paths(
+    output_dir: Path,
+    stage: str,
+) -> tuple[Path, Path, Path]:
+    prefix = f"operation-{_validate_stage(stage)}"
+    return (
+        output_dir / f"{prefix}-attempt.json",
+        output_dir / f"{prefix}-raw.json",
+        output_dir / f"{prefix}-receipt.json",
+    )
+
+
+def _real_push_source(path_value: str) -> str:
+    if type(path_value) is not str or not path_value:
+        raise AdmissionGateError("push local path is missing")
+    path = Path(path_value)
+    if not path.is_absolute() or str(path) != path_value:
+        raise AdmissionGateError("push local path must be exact and absolute")
+    try:
+        metadata = path.lstat()
+    except OSError as error:
+        raise AdmissionGateError(f"cannot stat push local path: {error}") from error
+    if not (stat.S_ISREG(metadata.st_mode) or stat.S_ISDIR(metadata.st_mode)):
+        raise AdmissionGateError("push local path is not a real file or directory")
+    if path.resolve(strict=True) != path:
+        raise AdmissionGateError("push local path uses a symlink or path alias")
+    repo_root = REPO_ROOT.resolve(strict=True)
+    if path != repo_root and repo_root not in path.parents:
+        raise AdmissionGateError("push local path is outside the repository")
+    return path_value
+
+
+def _exact_remote_path(path_value: str) -> str:
+    if type(path_value) is not str or not path_value:
+        raise AdmissionGateError("push remote path is missing")
+    path = PurePosixPath(path_value)
+    if not path.is_absolute() or str(path) != path_value or ".." in path.parts:
+        raise AdmissionGateError("push remote path must be exact and absolute")
+    remote_root = PurePosixPath("/huyang2/zoology")
+    if path != remote_root and remote_root not in path.parents:
+        raise AdmissionGateError(
+            "push remote path is outside /huyang2/zoology"
+        )
+    return path_value
+
+
+def _operation_arguments(
+    command: str,
+    remote_command: str | None,
+    local_path: str | None,
+    remote_path: str | None,
+) -> tuple[tuple[str, ...], int, str | None, str | None, str | None]:
+    if command == "exec":
+        if type(remote_command) is not str or not remote_command:
+            raise AdmissionGateError("exec remote command is missing")
+        if local_path is not None or remote_path is not None:
+            raise AdmissionGateError("exec operation received push paths")
+        return (
+            ("exec", TARGET, "--", remote_command),
+            HELPER_TIMEOUT_SECONDS,
+            remote_command,
+            None,
+            None,
+        )
+    if command == "push":
+        if remote_command is not None:
+            raise AdmissionGateError("push operation received an exec command")
+        if local_path is None or remote_path is None:
+            raise AdmissionGateError("push operation paths are missing")
+        local_path = _real_push_source(local_path)
+        remote_path = _exact_remote_path(remote_path)
+        return (
+            ("push", TARGET, "--", local_path, remote_path),
+            PUSH_HELPER_TIMEOUT_SECONDS,
+            None,
+            local_path,
+            remote_path,
+        )
+    raise AdmissionGateError("operation command must be exec or push")
+
+
+def _operation_parent(
+    output_dir: Path,
+    bundle_dir: Path | None,
+    run_id: str,
+    identity_parent: str,
+    formal_source_sha: str | None,
+    formal_source_tree: str | None,
+    module_sha256: str,
+) -> tuple[dict[str, Any], bytes]:
+    if identity_parent == "initial":
+        return _validate_observation(output_dir, run_id, "initial")
+    if identity_parent == "pre-capture":
+        initial, _ = _validate_observation(output_dir, run_id, "initial")
+        return _validate_observation(
+            output_dir,
+            run_id,
+            "pre-capture",
+            expected_initial=initial,
+        )
+    if identity_parent != "binding":
+        raise AdmissionGateError(
+            "identity parent must be initial, pre-capture, or binding"
+        )
+    if (
+        bundle_dir is None
+        or formal_source_sha is None
+        or formal_source_tree is None
+    ):
+        raise AdmissionGateError(
+            "binding parent requires bundle and formal source arguments"
+        )
+    binding = verify_clock_binding(
+        output_dir,
+        bundle_dir,
+        run_id,
+        formal_source_sha,
+        formal_source_tree,
+        module_sha256,
+    )
+    binding_path = output_dir / CLOCK_BINDING_NAME
+    return binding, _real_file(binding_path, "clock binding").read_bytes()
+
+
+def _invoke_operation_helper(
+    runner: OperationRunner,
+    node: Path,
+    helper: Path,
+    arguments: tuple[str, ...],
+    timeout_seconds: int,
+    raw_path: Path,
+    stage: str,
+) -> bytes:
+    _require_helper_sha256(helper)
+    try:
+        result = runner(node, helper, arguments, timeout_seconds)
+    except subprocess.TimeoutExpired as error:
+        raw = error.stdout if type(error.stdout) is bytes else b""
+        _write_exclusive(raw_path, raw)
+        _require_helper_sha256(helper)
+        raise AdmissionGateError(
+            f"operation {stage} helper process timed out"
+        ) from error
+    raw = result.stdout
+    if type(raw) is not bytes:
+        raise AdmissionGateError(
+            f"operation {stage} helper stdout is not bytes"
+        )
+    _write_exclusive(raw_path, raw)
+    _require_helper_sha256(helper)
+    if type(result.returncode) is not int or result.returncode != 0:
+        raise AdmissionGateError(
+            f"operation {stage} helper process failed"
+        )
+    if type(result.stderr) is not bytes or result.stderr:
+        raise AdmissionGateError(
+            f"operation {stage} helper process stderr is not empty"
+        )
+    return raw
+
+
+def _validate_operation_response(
+    raw: bytes,
+    command: str,
+    workspace_id: str,
+    local_path: str | None,
+    remote_path: str | None,
+) -> None:
+    target = _single_target(_load_object(raw, "operation response"), command)
+    if target["wpId"] != workspace_id:
+        raise AdmissionGateError("operation workspace differs from its parent")
+    operation = target.get(command)
+    if (
+        type(operation) is not dict
+        or operation.get("ok") is not True
+        or type(operation.get("exitCode")) is not int
+        or operation.get("exitCode") != 0
+        or type(operation.get("stdout")) is not str
+        or type(operation.get("stderr")) is not str
+    ):
+        raise AdmissionGateError(f"AIStation {command} operation failed")
+    if command == "push" and (
+        operation.get("localPath") != local_path
+        or operation.get("remotePath") != remote_path
+    ):
+        raise AdmissionGateError("AIStation push path echo differs from request")
+
+
+def _operation_attempt(
+    run_id: str,
+    stage: str,
+    command: str,
+    identity_parent: str,
+    parent_sha256: str,
+    workspace_id: str,
+    remote_command: str | None,
+    local_path: str | None,
+    remote_path: str | None,
+    timeout_seconds: int,
+    module_sha256: str,
+) -> dict[str, Any]:
+    return {
+        "schema_version": 1,
+        "kind": "aistation-operation-attempt",
+        "run_id": run_id,
+        "stage": stage,
+        "command": command,
+        "target": TARGET,
+        "workspace_id": workspace_id,
+        "identity_parent": identity_parent,
+        "identity_parent_sha256": parent_sha256,
+        "remote_command": remote_command,
+        "local_path": local_path,
+        "remote_path": remote_path,
+        "timeout_seconds": timeout_seconds,
+        "helper_path": str(APPROVED_HELPER_PATH),
+        "helper_sha256": APPROVED_HELPER_SHA256,
+        "python_executable": EXPECTED_PYTHON_EXECUTABLE,
+        "python_version": EXPECTED_PYTHON_VERSION,
+        "admission_module_sha256": module_sha256,
+    }
+
+
+def _operation_receipt(
+    attempt: dict[str, Any],
+    attempt_raw: bytes,
+    raw: bytes,
+) -> dict[str, Any]:
+    return {
+        **attempt,
+        "kind": "aistation-operation-receipt",
+        "attempt_sha256": _sha256_bytes(attempt_raw),
+        "raw_response_sha256": _sha256_bytes(raw),
+    }
+
+
+def run_operation(
+    helper: Path,
+    output_dir: Path,
+    run_id: str,
+    stage: str,
+    command: str,
+    identity_parent: str,
+    module_sha256: str,
+    *,
+    remote_command: str | None = None,
+    local_path: str | None = None,
+    remote_path: str | None = None,
+    bundle_dir: Path | None = None,
+    formal_source_sha: str | None = None,
+    formal_source_tree: str | None = None,
+    runner: OperationRunner = _run_helper_with_timeout,
+    node: Path | None = None,
+) -> dict[str, Any]:
+    module_sha256 = _require_module_sha256(module_sha256)
+    helper, output_dir, node = _prepare_context(
+        helper,
+        output_dir,
+        run_id,
+        "initial" if identity_parent == "initial" else "pre-capture",
+        node,
+        require_reserved_absent=False,
+    )
+    stage = _validate_stage(stage)
+    arguments, timeout_seconds, remote_command, local_path, remote_path = (
+        _operation_arguments(
+            command, remote_command, local_path, remote_path
+        )
+    )
+    parent, parent_raw = _operation_parent(
+        output_dir,
+        bundle_dir,
+        run_id,
+        identity_parent,
+        formal_source_sha,
+        formal_source_tree,
+        module_sha256,
+    )
+    attempt_path, raw_path, receipt_path = _operation_paths(
+        output_dir, stage
+    )
+    for path in (attempt_path, raw_path, receipt_path):
+        if path.exists() or path.is_symlink():
+            raise FileExistsError(f"operation stage output already exists: {path}")
+    attempt = _operation_attempt(
+        run_id,
+        stage,
+        command,
+        identity_parent,
+        _sha256_bytes(parent_raw),
+        str(parent["workspace_id"]),
+        remote_command,
+        local_path,
+        remote_path,
+        timeout_seconds,
+        module_sha256,
+    )
+    attempt_raw = _canonical_json(attempt)
+    _write_exclusive(attempt_path, attempt_raw)
+    raw = _invoke_operation_helper(
+        runner,
+        node,
+        helper,
+        arguments,
+        timeout_seconds,
+        raw_path,
+        stage,
+    )
+    _validate_operation_response(
+        raw,
+        command,
+        str(parent["workspace_id"]),
+        local_path,
+        remote_path,
+    )
+    refreshed_parent, refreshed_parent_raw = _operation_parent(
+        output_dir,
+        bundle_dir,
+        run_id,
+        identity_parent,
+        formal_source_sha,
+        formal_source_tree,
+        module_sha256,
+    )
+    if refreshed_parent != parent or refreshed_parent_raw != parent_raw:
+        raise AdmissionGateError("operation identity parent drifted")
+    _require_helper_sha256(helper)
+    persisted_attempt = _real_file(
+        attempt_path, "operation attempt"
+    ).read_bytes()
+    persisted_raw = _real_file(raw_path, "operation raw response").read_bytes()
+    if persisted_attempt != attempt_raw or persisted_raw != raw:
+        raise AdmissionGateError("operation evidence drifted before receipt")
+    receipt = _operation_receipt(attempt, attempt_raw, raw)
+    _write_exclusive(receipt_path, _canonical_json(receipt))
+    _require_helper_sha256(helper)
+    refreshed_attempt = _real_file(
+        attempt_path, "operation attempt"
+    ).read_bytes()
+    refreshed_raw = _real_file(raw_path, "operation raw response").read_bytes()
+    persisted_receipt = _real_file(
+        receipt_path, "operation receipt"
+    ).read_bytes()
+    if (
+        refreshed_attempt != attempt_raw
+        or refreshed_raw != raw
+        or persisted_receipt != _canonical_json(receipt)
+    ):
+        raise AdmissionGateError("operation evidence drifted after commit")
+    return receipt
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -676,6 +1390,37 @@ def _parser() -> argparse.ArgumentParser:
         command_parser.add_argument("--module-sha256", required=True)
         if command == "capture":
             command_parser.add_argument("--helper", type=Path, required=True)
+    for command in ("bind-clock", "verify-binding"):
+        command_parser = subparsers.add_parser(command)
+        command_parser.add_argument("--output-dir", type=Path, required=True)
+        command_parser.add_argument("--bundle-dir", type=Path, required=True)
+        command_parser.add_argument("--run-id", required=True)
+        command_parser.add_argument("--formal-source-sha", required=True)
+        command_parser.add_argument("--formal-source-tree", required=True)
+        command_parser.add_argument("--module-sha256", required=True)
+    operation_parser = subparsers.add_parser("run-operation")
+    operation_parser.add_argument("--helper", type=Path, required=True)
+    operation_parser.add_argument("--output-dir", type=Path, required=True)
+    operation_parser.add_argument("--run-id", required=True)
+    operation_parser.add_argument("--stage", required=True)
+    operation_parser.add_argument(
+        "--command",
+        dest="operation_command",
+        choices=("exec", "push"),
+        required=True,
+    )
+    operation_parser.add_argument(
+        "--identity-parent",
+        choices=("initial", "pre-capture", "binding"),
+        required=True,
+    )
+    operation_parser.add_argument("--module-sha256", required=True)
+    operation_parser.add_argument("--remote-command")
+    operation_parser.add_argument("--local-path")
+    operation_parser.add_argument("--remote-path")
+    operation_parser.add_argument("--bundle-dir", type=Path)
+    operation_parser.add_argument("--formal-source-sha")
+    operation_parser.add_argument("--formal-source-tree")
     return parser
 
 
@@ -690,12 +1435,46 @@ def main(argv: list[str] | None = None) -> int:
                 arguments.phase,
                 arguments.module_sha256,
             )
-        else:
+        elif arguments.command == "verify":
             observation = verify_observation(
                 arguments.output_dir,
                 arguments.run_id,
                 arguments.phase,
                 arguments.module_sha256,
+            )
+        elif arguments.command == "bind-clock":
+            observation = bind_clock(
+                arguments.output_dir,
+                arguments.bundle_dir,
+                arguments.run_id,
+                arguments.formal_source_sha,
+                arguments.formal_source_tree,
+                arguments.module_sha256,
+            )
+        elif arguments.command == "verify-binding":
+            observation = verify_clock_binding(
+                arguments.output_dir,
+                arguments.bundle_dir,
+                arguments.run_id,
+                arguments.formal_source_sha,
+                arguments.formal_source_tree,
+                arguments.module_sha256,
+            )
+        else:
+            observation = run_operation(
+                arguments.helper,
+                arguments.output_dir,
+                arguments.run_id,
+                arguments.stage,
+                arguments.operation_command,
+                arguments.identity_parent,
+                arguments.module_sha256,
+                remote_command=arguments.remote_command,
+                local_path=arguments.local_path,
+                remote_path=arguments.remote_path,
+                bundle_dir=arguments.bundle_dir,
+                formal_source_sha=arguments.formal_source_sha,
+                formal_source_tree=arguments.formal_source_tree,
             )
     except (AdmissionGateError, FileExistsError, OSError) as error:
         print(f"aistation admission gate: {error}", file=sys.stderr)
