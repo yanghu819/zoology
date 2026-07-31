@@ -4,12 +4,16 @@
 
 - Plan: `P-BASELINE-006`
 - Run: `gdn-mqar-single-baseline-durable-20260731t120840z`
-- State: `proposed`
+- State: `approved`
 - Proposed UTC: `2026-07-31T12:08:40Z`
-- Approval: pending; none of the replies sent before this proposal was frozen
-  counts as approval for P006
+- Approved UTC: `2026-07-31T14:13:12Z`
+- Approval: the user explicitly authorized replacing the expired GPU2
+  environment with a fresh otherwise-identical GPU2 environment and retiring
+  the old one after the proposal was pushed and GitHub-verified
 - Target: logical AIStation `GPU2` only
-- GPU2 workspace request: unallocated
+- GPU2 workspace discovery: request
+  `5186b27a-139a-4eb7-8b99-4ad64683c64f` was `Halt` with reported remaining
+  time `-312` seconds; rebuild/open is approved but not yet invoked
 - Remote root: `/huyang2/zoology`
 - Formal source SHA:
   `13f880b5fe61619a1006ef33610de69fbabaaec1`
@@ -27,11 +31,10 @@ created. No AIStation status, probe, workspace request, remote directory,
 formal capture, worker, training, model, metric, or score was created for P006
 while preparing this record. GPU1 was not queried or mutated.
 
-P006 is a new proposed experiment. It does not reopen, delete, rename, retry,
-or reinterpret P001–P005. The user's earlier `continue` messages authorized
-work already proposed at those times; they do not pre-approve this newly
-frozen plan. A new explicit reply after this record is pushed is required
-before any GPU2 allocation or remote P006 mutation.
+P006 is a newly approved experiment. It does not reopen, delete, rename,
+retry, or reinterpret P001–P005. The approval applies only to rebuilding the
+literal expired GPU2 row and executing this already-frozen single run. It does
+not authorize GPU1, another scientific setting, a retry, or relaxed gates.
 
 ## 2. Hypothesis
 
@@ -686,7 +689,7 @@ Not run. No formal GDN metric exists for P006.
 
 ## 8. Conclusions
 
-Pending explicit approval and execution.
+Approved for one fresh GPU2 rebuild and execution; not yet launched.
 
 ## 9. Submission record
 
