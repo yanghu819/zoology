@@ -4,9 +4,10 @@
 
 - Plan: `P-BASELINE-004`
 - Run: `gdn-mqar-single-baseline-freshlease-20260731t050430z`
-- State: `in-progress`
+- State: `failed`
 - Approved UTC: `2026-07-31T05:04:30Z`
 - Started UTC (fresh GPU2 observation): `2026-07-31T05:06:56Z`
+- Ended UTC (remote terminal observation): `2026-07-31T05:17:13Z`
 - Approval: the user's reply `继续` after the explicit fresh-GPU2/new-experiment handoff
 - Target: logical AIStation `GPU2`
 - Remote root: `/huyang2/zoology`
@@ -148,17 +149,87 @@ node "${AISTATION_HELPER}" exec GPU2 -- \
 
 ## 6. Artifacts
 
-Pending allocation and terminal validation. Models, datasets, checkpoints,
-and optimizer state will not be uploaded.
+- Remote initialized and clock-published suite:
+  `/huyang2/zoology/runs/gdn-mqar-single-baseline-freshlease-20260731t050430z`
+- Complete failure-evidence archive:
+  `gdn-mqar-single-baseline-freshlease-20260731t050430z-complete-failure-evidence.tar.gz`
+- Archive SHA-256:
+  `8809941714c4bdae5c7a4802ee49f9604bd818bce7b68b175261c7f0b9808215`
+- Archive sidecar SHA-256:
+  `b3c5c21d6f4f669357fefff1c8439b9c81d289ef3666749a41fe27407f87c378`
+- Thirty-eight-file inventory SHA-256:
+  `56869372a3787060cb5f0deec49bc17b90913031b2dbd571d89c148edad75347`
+- Local capture terminal SHA-256:
+  `b84c3033b6c06887290503ae448d930857d86ca2fb18acd9b097a3b05fe5cba1`
+- Published clock proof SHA-256:
+  `f0ab3d7508621cb21cd13d369d52c840009fc1fbefc9de7582efd21e3791f627`
+- Published AIStation status SHA-256:
+  `3b35c73d3641e74f952b739012e572b572736408bfd6f2ad58db6015bd9bdc8b`
+- Suite manifest SHA-256:
+  `8176c8dd4b16ef1b382586e1273c866fe51a4184025e86a7c0b4f19e051331be`
+- Publish-timeout control record SHA-256:
+  `8c705b20c4232f800f0e2f4f4ee226401576e4ebb45c96e9ab59efe335d83add`
+- Local safe extraction:
+  `/Users/torusmini/Documents/zoology-worktrees/baseline-002/artifacts/gdn-mqar-single-baseline-freshlease-20260731t050430z/verify.h27KZs`
+
+The archive contains the seven original local capture files, the fifteen-file
+remote suite after immutable clock publication, fifteen setup/cache/smoke/init
+control files, and one post-timeout observation record. All thirty remotely
+sourced file hashes match after pull. Independent verification rejected links,
+special files, unsafe or duplicate paths, hash drift, credential-like content,
+and lifecycle evidence that would imply admission or launch. The nested source
+snapshot contains 583 safe members.
+
+No controller admission, worker admission, launch request, worker terminal,
+training log, metrics, result, model, dataset payload, checkpoint, optimizer
+state, or score exists. None is present in Git or the evidence archive.
 
 ## 7. Results
 
-No result exists before formal launch.
+Fresh GPU2 allocation and all five preflight steps completed successfully:
+`setup=0`, `check=0`, `cache=0`, `smoke=0`, and `init=0`. The smoke used the
+real A100 and reported `gdn_mqar_smoke=pass`.
+
+The one formal capture completed under the exact formal source and approved
+helper. It bound workspace `2c6882d9-a24c-4ad6-876b-c8ec3ea995a6`,
+hostname `adcgefkb1vqkn-0`, boot ID
+`08d861e6-ce7b-4fe8-ba78-de529efd1b31`, an eight-second remote bracket,
+and `13,840` seconds remaining. All seven files published unchanged.
+
+The approved helper then kept `publish-and-launch` in the foreground. Its SSH
+execution ceiling expired after 23.8136 seconds and returned exit 124. At the
+remote observation `2026-07-31T05:17:13Z`, all seven clock files existed in
+the suite, but the publishing Python process count, admission count, launch
+count, worker count, terminal count, and result count were all zero. GPU
+memory and utilization were also zero. The command was not reissued.
+
+| Measure | Outcome |
+| ------- | ------- |
+| Reproduced final `valid/accuracy` | Not evaluated; worker never launched |
+| Strong threshold `>=0.98` | Not evaluated |
+| Visual-compatibility floor `>=0.96` | Not evaluated |
+| Final KV256 diagnostic `>=0.88` | Not evaluated |
+| Delta versus official visual approximation | Not available |
 
 ## 8. Conclusions
 
-No scientific conclusion is permitted before terminal validation.
+Decision: `failed`.
+
+This is a transport-lifetime failure after evidence publication but before
+admission, not a Gated DeltaNet result. No threshold was relaxed and the
+consumed run ID was not retried. The model hypothesis is neither supported nor
+rejected.
+
+The reusable lesson is plain: a command that must take longer than the SSH
+helper's roughly 20-second limit must keep running after SSH disconnects.
+`nohup` means the same remote Python process survives that disconnect; it does
+not split publication from launch or weaken the same-process guarantee.
+P-BASELINE-005 records that single operational intervention as proposed.
+
+This experiment supplies no evidence for or against the Bitter Lesson because
+no learning process ran.
 
 ## 9. Submission record
 
-This is a reproduction baseline, not a competition submission.
+This is a reproduction baseline, not a competition submission. No submission
+was made and no `exp/score-*` tag is permitted because there is no score.
