@@ -4,8 +4,9 @@
 
 - Plan: `P-BASELINE-004`
 - Run: `gdn-mqar-single-baseline-freshlease-20260731t050430z`
-- State: `approved`
+- State: `in-progress`
 - Approved UTC: `2026-07-31T05:04:30Z`
+- Started UTC (fresh GPU2 observation): `2026-07-31T05:06:56Z`
 - Approval: the user's reply `继续` after the explicit fresh-GPU2/new-experiment handoff
 - Target: logical AIStation `GPU2`
 - Remote root: `/huyang2/zoology`
@@ -65,7 +66,11 @@ epoch budget, or threshold may change.
 ## 4. Environment and admission
 
 - AIStation target: logical `GPU2` only
-- Fresh workspace ID, GPU UUID, hostname, boot ID, and start time: pending
+- Fresh workspace ID: `2c6882d9-a24c-4ad6-876b-c8ec3ea995a6`
+- GPU UUID: `GPU-573c7ed1-1c51-8334-299b-edf2ff3440e6`
+- Hostname: `adcgefkb1vqkn-0`
+- Boot ID: `08d861e6-ce7b-4fe8-ba78-de529efd1b31`
+- Initial remaining time before setup: `14,366` seconds
 - Expected GPU: `NVIDIA A100-SXM4-80GB`
 - Approved helper:
   `/Users/torusmini/.codex/skills/aistation-skill/scripts/aistation_api.js`
@@ -91,6 +96,8 @@ Obtain and verify only a fresh logical GPU2 lease, then use the exact formal
 source:
 
 ```bash
+export AISTATION_HELPER=\
+/Users/torusmini/.codex/skills/aistation-skill/scripts/aistation_api.js
 node "${AISTATION_HELPER}" restart GPU2
 node "${AISTATION_HELPER}" status GPU2
 node "${AISTATION_HELPER}" probe GPU2
@@ -112,6 +119,8 @@ export ZOOLOGY_EXPECTED_GIT_SHA=13f880b5fe61619a1006ef33610de69fbabaaec1
 ./run.sh smoke
 ./run.sh init-baseline \
   /huyang2/zoology/runs/gdn-mqar-single-baseline-freshlease-20260731t050430z
+mkdir -p \
+  /huyang2/zoology/artifacts/gdn-mqar-single-baseline-freshlease-20260731t050430z
 ```
 
 Capture, upload unchanged, then publish and launch exactly once:
