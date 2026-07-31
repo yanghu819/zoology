@@ -111,6 +111,10 @@ python3 -m repro.aistation_clock_bracket capture \
   `b8815ab3e7454b4a4fbba58cbb8a6dbb5f2a421789ff67ef53130bc7aeeb3ef4`
 - Local safe extraction:
   `/Users/torusmini/Documents/zoology-worktrees/baseline-002/artifacts/gdn-mqar-single-baseline-clockbracket-20260731t034656z/verify.BgT1GJ`
+- Neutral archive tag:
+  `archive/gdn-mqar-single-baseline-20260731-failed-lease-floor`
+- GitHub failure-evidence release:
+  `https://github.com/yanghu819/zoology/releases/tag/archive/gdn-mqar-single-baseline-20260731-failed-lease-floor`
 
 The archive contains the six-file failed controller capture, eight immutable
 suite files, and three initialization control files. Remote and local hashes
@@ -169,4 +173,5 @@ Lesson because no learning process ran.
 ## 9. Submission record
 
 This is a reproduction baseline, not a competition submission. No submission
-was made and no `exp/score-*` tag is permitted because there is no score.
+was made and no `exp/score-*` tag is permitted because there is no score. A
+neutral prerelease preserves the independently verified failure evidence.
