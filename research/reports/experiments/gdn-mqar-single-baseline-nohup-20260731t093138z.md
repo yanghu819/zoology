@@ -21,11 +21,11 @@ and its local report, local artifact directory, remote suite directory, and
 remote run-specific artifact directory were absent. This is a new experiment;
 it does not reopen, recapture, relaunch, rename, or delete any earlier run.
 
-Approval does not allocate a GPU. The new logical GPU2 request remains
-`Pending`, so this record has no start time, hostname, boot ID, GPU UUID, or
-active resource-allocation row. The plan may move to `in-progress` only after
-that exact request becomes `Running`, the approved helper probes it, all
-prelaunch gates pass, and the one formal launch is actually admitted.
+Approval did not itself allocate a GPU. The same request later became
+`Running` and passed the approved helper probe, as recorded in Section 4. The
+plan remains `approved`, without an active resource-allocation row, until all
+prelaunch gates pass and the one formal launch is actually admitted. Merely
+preparing the allocation does not claim that GDN training has started.
 
 ## 2. Hypothesis
 
@@ -92,10 +92,21 @@ disconnect; it does not split evidence publication from admission or launch.
 - AIStation target: logical `GPU2` only
 - Approved workspace request:
   `5186b27a-139a-4eb7-8b99-4ad64683c64f`
-- Current request state: `Pending`
-- Expected GPU after allocation: `NVIDIA A100-SXM4-80GB`
+- Current request state: `Running`
+- Status/probe bracket: `2026-07-31T10:02:07Z` through
+  `2026-07-31T10:02:11Z` (`1785492127` through `1785492131`)
+- Remaining time in that status response: `13,658` seconds
+- Hostname: `catqp8qe5bcfj-0`
+- Boot ID: `08d861e6-ce7b-4fe8-ba78-de529efd1b31`
+- GPU UUID: `GPU-1522da54-4d66-ddda-298e-422ca5bb6516`
+- GPU: `NVIDIA A100-SXM4-80GB`, `0/81,920 MiB`, `0%` at probe
 - Approved helper:
   `/Users/torusmini/.codex/skills/aistation-skill/scripts/aistation_api.js`
+- Approved helper SHA-256:
+  `628aefaa2de3eb09ad5e6e1397e04280650e01847da2d9192566137405230226`
+- Python: `3.10.11`
+- PyTorch/torchvision: `2.7.0+cu126` / `0.22.0+cu126`
+- CUDA availability: `True`
 - Remote work directory: `/huyang2/zoology`
 - Formal suite:
   `/huyang2/zoology/runs/gdn-mqar-single-baseline-nohup-20260731t093138z`
@@ -105,11 +116,17 @@ disconnect; it does not split evidence publication from admission or launch.
   `/huyang2/zoology/artifacts/gdn-mqar-single-baseline-nohup-20260731t093138z/detach-smoke-control`
 - Formal one-shot control directory:
   `/huyang2/zoology/artifacts/gdn-mqar-single-baseline-nohup-20260731t093138z/formal-launch-control`
+- Audited operational-control commit:
+  `72156a43212eeecdcb24923215b5973f94412866`
+- Detached-smoke SHA-256:
+  `59339b6977bac9c763d469a6e2dbe22de51563b27188f3b6b0b7d8acb3980d13`
+- Durable-starter SHA-256:
+  `6e2eea84a1386598da5e5d48df85a9c0264f212b008ac265fd63bf2a00133b44`
+- Durable-wrapper SHA-256:
+  `e326e8dd999ae7870eeeffc5429e588f53ca31ad2b896c27be691725f117e4eb`
 
-No host, boot ID, GPU UUID, Python version, PyTorch version, or remaining lease
-is asserted while the request is `Pending`. Once the same request is
-`Running`, the approved helper must probe GPU2 and record those values. GPU1
-must not be queried or mutated.
+The binding command also reverified a clean detached formal SHA/tree and
+`torch.cuda.is_available() == True`. GPU1 was not queried or mutated.
 
 Admission is fail-closed:
 
@@ -122,12 +139,16 @@ Admission is fail-closed:
    without `mkdir -p`. Its child must survive the helper transport and produce
    its expected terminal sentinel after more than 20 seconds. A missing PID,
    log, or terminal sentinel fails P005 before formal capture.
-4. The harmless smoke directory is the only expected pre-formal artifact.
-   The formal suite, local controller directory, and formal one-shot control
-   directory must remain absent until their designated one-time operations.
+4. Before suite initialization, the only permitted run-specific remote state
+   is the immutable `launcher/` upload, one exclusive durable-preflight
+   directory, and the completed harmless smoke directory. The formal suite,
+   local controller directory, and formal one-shot control directory must
+   remain absent until their designated one-time operations.
 5. Before formal capture, an ordinary read-only GPU2 status check must still
-   show enough slack to satisfy the unchanged `12,060`-second formal
-   controller floor. Exactly one seven-file clock bundle may then be captured.
+   show at least `12,120` seconds. This is conservative launch headroom for the
+   unchanged `12,060`-second controller floor plus the unchanged 60-second
+   evidence-age window; neither formal threshold is lowered. Exactly one
+   seven-file clock bundle may then be captured.
 6. The captured bundle must bind the same Running workspace request, hostname,
    boot ID, helper identity, formal source, a remote bracket of at most 15
    seconds, and at least `12,060` seconds remaining.
@@ -137,34 +158,37 @@ Admission is fail-closed:
    publication, admission, worker, or training later fails.
 8. The durable wrapper must record its own PID and the Python child's PID,
    start ticks, and exact command before waiting. The child command must be one
-   unchanged `python -u -m repro.aistation_clock_bracket publish-and-launch`
-   invocation. The wrapper must atomically write the child's exit code, end
+   byte-identical-to-P004 `.venv/bin/python -m repro.aistation_clock_bracket
+   publish-and-launch` invocation, without adding `-u` or splitting the command.
+   The wrapper must atomically write the child's exit code, end
    UTC, and evidence hashes. Missing terminal evidence is failure, not grounds
    to launch again.
 9. That same Python child performs immutable publication, the second
    host/boot/age check, and the only controller/worker launch. Publication and
    launch may not be split across processes or commands.
 
-The exact durable-wrapper file, its SHA-256, and its audited launch command are
-intentionally not asserted in this approval snapshot because the wrapper does
-not yet exist. They are mandatory prelaunch evidence and must be frozen in Git
-before formal capture or launch. Until then, the experiment remains blocked
-from entering `in-progress`.
+All three operational scripts are frozen in the audited commit and hashes
+above. Independent review gave the starter/wrapper a formal-use `GO`: the
+formal argv occurs once, process identity is bound through Linux `/proc`, every
+signal path revalidates PPID plus start ticks, descriptors are detached, and
+the terminal record is atomic. Local validation reported `76 passed, 2
+skipped` for the control/clock/reproduction suites and `2 passed, 3 skipped`
+for focused control tests; all skips are Linux-only integration paths. The
+real GPU2 detached smoke below is the required Linux execution gate.
 
 ## 5. Commands
 
-While the request is `Pending`, the only permitted AIStation operation is a
-read-only status check of logical GPU2 through the approved helper:
+The request has left `Pending`; all AIStation actions remain restricted to
+logical GPU2 through the approved helper:
 
 ```bash
 export AISTATION_HELPER=\
 /Users/torusmini/.codex/skills/aistation-skill/scripts/aistation_api.js
 node "${AISTATION_HELPER}" status GPU2
+node "${AISTATION_HELPER}" probe GPU2
 ```
 
-Do not probe, SSH, initialize paths, or start another environment while the
-request remains `Pending`. Once the exact request becomes `Running`, first
-bind and verify the environment and exact formal source:
+The exact Running request is first bound to the environment and formal source:
 
 ```bash
 node "${AISTATION_HELPER}" status GPU2
@@ -187,11 +211,47 @@ export ZOOLOGY_EXPECTED_GIT_SHA=13f880b5fe61619a1006ef33610de69fbabaaec1
 ./run.sh smoke
 ```
 
-The harmless detached-process smoke must run before suite initialization or
-formal capture. It must use its exclusive smoke control directory, return from
-the helper immediately, remain alive beyond 20 seconds, and atomically write a
-non-GPU terminal sentinel. Its exact audited command and evidence hashes must
-be added to this section before execution.
+Those four commands are the exact ordered preflight payload. They must run in
+one detached, one-shot remote preflight envelope with separate step logs and
+exit files plus an atomic terminal record; they must not be left in a
+foreground helper session.
+
+Upload the three committed scripts directly into the ignored remote artifact
+tree; do not check out the operational commit into the formal repository:
+
+```bash
+RUN_ID=gdn-mqar-single-baseline-nohup-20260731t093138z
+RART=/huyang2/zoology/artifacts/${RUN_ID}
+LAUNCHER=${RART}/launcher
+node "${AISTATION_HELPER}" exec GPU2 -- \
+  'test ! -e /huyang2/zoology/artifacts/gdn-mqar-single-baseline-nohup-20260731t093138z && mkdir /huyang2/zoology/artifacts/gdn-mqar-single-baseline-nohup-20260731t093138z && mkdir /huyang2/zoology/artifacts/gdn-mqar-single-baseline-nohup-20260731t093138z/launcher'
+node "${AISTATION_HELPER}" push GPU2 -- \
+  /Users/torusmini/Documents/zoology-worktrees/baseline-002/research/control/detached_process_smoke.sh \
+  "${LAUNCHER}/detached_process_smoke.sh"
+node "${AISTATION_HELPER}" push GPU2 -- \
+  /Users/torusmini/Documents/zoology-worktrees/baseline-002/research/control/durable_publish_launch_start.sh \
+  "${LAUNCHER}/durable_publish_launch_start.sh"
+node "${AISTATION_HELPER}" push GPU2 -- \
+  /Users/torusmini/Documents/zoology-worktrees/baseline-002/research/control/durable_publish_launch_wrapper.sh \
+  "${LAUNCHER}/durable_publish_launch_wrapper.sh"
+```
+
+Remote SHA-256 parity, regular-file status, and mode `0500` are mandatory. The
+harmless detached-process smoke then runs exactly once before suite
+initialization or formal capture:
+
+```bash
+"${LAUNCHER}/detached_process_smoke.sh" start \
+  --script-sha256 \
+  59339b6977bac9c763d469a6e2dbe22de51563b27188f3b6b0b7d8acb3980d13 \
+  --control-dir "${RART}/detach-smoke-control"
+```
+
+The helper must return before its transport timeout. Read-only polling must
+then prove a completed 45-second terminal, session leader, no controlling TTY,
+the same host/boot, matching evidence hashes, and continued absence of the
+formal suite, controller, and one-shot formal control. Never invoke the smoke
+start path again after its control directory exists.
 
 After that smoke passes, initialize only this new suite and perform the sole
 formal capture:
@@ -207,9 +267,23 @@ python3 -m repro.aistation_clock_bracket capture \
   --formal-source-sha 13f880b5fe61619a1006ef33610de69fbabaaec1
 ```
 
-Upload the completed seven-file bundle unchanged. The formal launch command is
-deliberately omitted until the durable wrapper exists, has been audited, and
-its exact file hash and invocation are frozen in Git. The eventual helper call
-may only create the absent formal one-shot control directory, start that
-audited wrapper once, and return immediately. All later monitoring commands
-must be read-only and must never relaunch or re-enter the start path.
+Upload the completed seven-file bundle unchanged. The following command,
+called once through approved-helper `exec GPU2`, is the only permitted formal
+start:
+
+```bash
+"${LAUNCHER}/durable_publish_launch_start.sh" \
+  --starter-sha256 \
+  6e2eea84a1386598da5e5d48df85a9c0264f212b008ac265fd63bf2a00133b44 \
+  --wrapper "${LAUNCHER}/durable_publish_launch_wrapper.sh" \
+  --wrapper-sha256 \
+  e326e8dd999ae7870eeeffc5429e588f53ca31ad2b896c27be691725f117e4eb \
+  --bundle-dir "${RART}/controller" \
+  --suite-dir "/huyang2/zoology/runs/${RUN_ID}" \
+  --control-dir "${RART}/formal-launch-control"
+```
+
+The formal start may only create the absent one-shot control directory, start
+the unchanged single Python child, and return immediately. Once that control
+directory exists, all monitoring is read-only and no command may relaunch or
+re-enter the start path.
