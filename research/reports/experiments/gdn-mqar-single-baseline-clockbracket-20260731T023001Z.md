@@ -4,7 +4,7 @@
 
 - Plan: `P-BASELINE-002`
 - Run: `gdn-mqar-single-baseline-clockbracket-20260731T023001Z`
-- State: `in-progress`
+- State: `failed`
 - Approved UTC: `2026-07-31T02:30:01Z`
 - Started UTC (GPU2 remote observation): `2026-07-31T03:18:10Z`
 - Approval: the user's post-closeout instruction `continue`
@@ -15,6 +15,7 @@
 - Parent experiment: `P-BASELINE-001`, terminal `failed`
 - Formal source SHA: `13f880b5fe61619a1006ef33610de69fbabaaec1`
 - Formal source tree: `ed83a7188351ca2cce8aba46d1cb3b108ce31ec2`
+- Ended UTC: `2026-07-31T03:46:56Z`
 
 This is a separately approved experiment with a new plan, run, suite, source
 snapshot, and evidence graph. It does not reopen, repair, overwrite, or retry
@@ -241,25 +242,31 @@ After an immutable completed terminal:
 
 ## 6. Artifacts
 
-The immutable manifest, source snapshot, seven-file clock capture, controller
-and worker admissions, launch record, terminal, resolved config, metrics,
-summary, logs, result, file inventory, archive hashes, formal Git SHA/tree,
-GPU attestation, and safe extraction verification will be recorded here after
-the terminal state is validated. The result's evidence map must contain 29
-independently recomputed hashes: the prior 23 baseline evidence files with the
-single status file replaced by all seven clock-capture files.
+Remote setup, cache validation, real-GPU smoke, and suite initialization
+completed under the exact formal SHA/tree. The initialized suite contains its
+manifest, source snapshot, runtime attestation, cache manifest, GPU inventory,
+and single-setting manifest. The local controller path
+`artifacts/gdn-mqar-single-baseline-clockbracket-20260731T023001Z/controller`
+does not exist.
 
 Models, data payloads, checkpoints, and optimizer state are excluded from Git
 and from any GitHub release.
 
 ## 7. Results
 
-No result exists before formal launch.
+The only formal capture command exited with code 1 in `_validate_run_id`:
+the frozen run timestamp used uppercase `T/Z`, while the production parser
+accepts only lowercase letters, digits, and dashes. Validation occurs before
+controller-directory creation and before any helper subprocess. Therefore no
+formal AIStation status, capture terminal, publication, launch, worker,
+training, metric, model, or score exists.
 
 ## 8. Conclusions
 
-No scientific conclusion is permitted before terminal and artifact
-validation.
+This is an infrastructure failure, not evidence about Gated DeltaNet. The
+scientific hypothesis remains untested. This run ID is terminal and was not
+retried. The reusable lesson is to validate an opaque run identifier with the
+production parser before freezing it into an experiment contract.
 
 ## 9. Submission record
 
