@@ -114,6 +114,8 @@ disconnect; it does not split evidence publication from admission or launch.
   `/huyang2/zoology/artifacts/gdn-mqar-single-baseline-nohup-20260731t093138z`
 - Detached-process smoke control directory:
   `/huyang2/zoology/artifacts/gdn-mqar-single-baseline-nohup-20260731t093138z/detach-smoke-control`
+- Durable preflight control directory:
+  `/huyang2/zoology/artifacts/gdn-mqar-single-baseline-nohup-20260731t093138z/preflight-control`
 - Formal one-shot control directory:
   `/huyang2/zoology/artifacts/gdn-mqar-single-baseline-nohup-20260731t093138z/formal-launch-control`
 - Audited operational-control commit:
@@ -124,6 +126,10 @@ disconnect; it does not split evidence publication from admission or launch.
   `6e2eea84a1386598da5e5d48df85a9c0264f212b008ac265fd63bf2a00133b44`
 - Durable-wrapper SHA-256:
   `e326e8dd999ae7870eeeffc5429e588f53ca31ad2b896c27be691725f117e4eb`
+- Audited durable-preflight commit:
+  `53944577bb47532f61a1d8357394d15c905b695c`
+- Durable-preflight SHA-256:
+  `3264d8d2fc52f924da801c4bb201ca2ecbc66eaf4edbf032097a6e419a28b3fc`
 
 The binding command also reverified a clean detached formal SHA/tree and
 `torch.cuda.is_available() == True`. GPU1 was not queried or mutated.
@@ -167,14 +173,16 @@ Admission is fail-closed:
    host/boot/age check, and the only controller/worker launch. Publication and
    launch may not be split across processes or commands.
 
-All three operational scripts are frozen in the audited commit and hashes
-above. Independent review gave the starter/wrapper a formal-use `GO`: the
+All four operational scripts are frozen in the audited commits and hashes
+above. Independent review gave the starter/wrapper and preflight a `GO`: the
 formal argv occurs once, process identity is bound through Linux `/proc`, every
 signal path revalidates PPID plus start ticks, descriptors are detached, and
-the terminal record is atomic. Local validation reported `76 passed, 2
-skipped` for the control/clock/reproduction suites and `2 passed, 3 skipped`
-for focused control tests; all skips are Linux-only integration paths. The
-real GPU2 detached smoke below is the required Linux execution gate.
+terminal records are atomic. The preflight additionally gates the starter
+record before any step and records early/signal failures. Local validation
+reported `76 passed, 2 skipped` for the original control/clock/reproduction
+suites and `3 passed, 5 skipped` for all focused control tests; all skips are
+Linux-only integration paths. The real GPU2 detached smoke below is the first
+required Linux execution gate.
 
 ## 5. Commands
 
@@ -216,7 +224,7 @@ one detached, one-shot remote preflight envelope with separate step logs and
 exit files plus an atomic terminal record; they must not be left in a
 foreground helper session.
 
-Upload the three committed scripts directly into the ignored remote artifact
+Upload the four committed scripts directly into the ignored remote artifact
 tree; do not check out the operational commit into the formal repository:
 
 ```bash
@@ -234,6 +242,9 @@ node "${AISTATION_HELPER}" push GPU2 -- \
 node "${AISTATION_HELPER}" push GPU2 -- \
   /Users/torusmini/Documents/zoology-worktrees/baseline-002/research/control/durable_publish_launch_wrapper.sh \
   "${LAUNCHER}/durable_publish_launch_wrapper.sh"
+node "${AISTATION_HELPER}" push GPU2 -- \
+  /Users/torusmini/Documents/zoology-worktrees/baseline-002/research/control/durable_preflight.sh \
+  "${LAUNCHER}/durable_preflight.sh"
 ```
 
 Remote SHA-256 parity, regular-file status, and mode `0500` are mandatory. The
@@ -252,6 +263,22 @@ then prove a completed 45-second terminal, session leader, no controlling TTY,
 the same host/boot, matching evidence hashes, and continued absence of the
 formal suite, controller, and one-shot formal control. Never invoke the smoke
 start path again after its control directory exists.
+
+After that diagnostic passes, the following is the only preflight start. It
+must return promptly; read-only polling must show four successful steps and a
+completed terminal before suite initialization:
+
+```bash
+"${LAUNCHER}/durable_preflight.sh" start \
+  --script-sha256 \
+  3264d8d2fc52f924da801c4bb201ca2ecbc66eaf4edbf032097a6e419a28b3fc \
+  --control-dir "${RART}/preflight-control"
+```
+
+This one-shot worker executes only `./setup.sh`, `./run.sh check`, `./run.sh
+cache`, and `./run.sh smoke`, in that order and once each. A nonzero step,
+missing start/terminal evidence, source drift, or formal-path appearance fails
+P005 without a preflight restart.
 
 After that smoke passes, initialize only this new suite and perform the sole
 formal capture:
