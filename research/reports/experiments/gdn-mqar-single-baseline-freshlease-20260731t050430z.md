@@ -7,7 +7,7 @@
 - State: `failed`
 - Approved UTC: `2026-07-31T05:04:30Z`
 - Started UTC (fresh GPU2 observation): `2026-07-31T05:06:56Z`
-- Ended UTC (remote terminal observation): `2026-07-31T05:17:13Z`
+- Ended UTC (post-timeout remote observation): `2026-07-31T05:17:13Z`
 - Approval: the user's reply `继续` after the explicit fresh-GPU2/new-experiment handoff
 - Target: logical AIStation `GPU2`
 - Remote root: `/huyang2/zoology`
@@ -157,7 +157,7 @@ node "${AISTATION_HELPER}" exec GPU2 -- \
   `8809941714c4bdae5c7a4802ee49f9604bd818bce7b68b175261c7f0b9808215`
 - Archive sidecar SHA-256:
   `b3c5c21d6f4f669357fefff1c8439b9c81d289ef3666749a41fe27407f87c378`
-- Thirty-eight-file inventory SHA-256:
+- Inventory SHA-256 (38 hashed evidence files):
   `56869372a3787060cb5f0deec49bc17b90913031b2dbd571d89c148edad75347`
 - Local capture terminal SHA-256:
   `b84c3033b6c06887290503ae448d930857d86ca2fb18acd9b097a3b05fe5cba1`
@@ -172,13 +172,17 @@ node "${AISTATION_HELPER}" exec GPU2 -- \
 - Local safe extraction:
   `/Users/torusmini/Documents/zoology-worktrees/baseline-002/artifacts/gdn-mqar-single-baseline-freshlease-20260731t050430z/verify.h27KZs`
 
-The archive contains the seven original local capture files, the fifteen-file
+The archive contains thirty-eight hashed evidence files plus the inventory
+itself: the seven original local capture files, the fifteen-file
 remote suite after immutable clock publication, fifteen setup/cache/smoke/init
-control files, and one post-timeout observation record. All thirty remotely
-sourced file hashes match after pull. Independent verification rejected links,
-special files, unsafe or duplicate paths, hash drift, credential-like content,
-and lifecycle evidence that would imply admission or launch. The nested source
-snapshot contains 583 safe members.
+control files, and one post-timeout observation record. Local post-pull hashing
+verified all thirty collected remote-sourced files against the inventory; the
+archive does not contain a separate remote-side thirty-file hash manifest.
+Independent verification rejected links, special files, unsafe or duplicate
+paths, hash drift, credential-like content, and lifecycle evidence that would
+imply admission or launch. The seven clock files additionally have byte-for-byte
+local-before/published pairs. The nested source snapshot contains 583 safe
+members.
 
 No controller admission, worker admission, launch request, worker terminal,
 training log, metrics, result, model, dataset payload, checkpoint, optimizer
