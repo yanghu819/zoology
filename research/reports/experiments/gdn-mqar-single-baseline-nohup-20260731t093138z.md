@@ -369,6 +369,16 @@ special files, model, data, or checkpoint:
   `f37cf4a7153ea69b5c3514920dd024fa9352fa53a2a2dc78f7ed6df282ad6551`
 - Complete evidence files: `38`; archive regular files including inventory:
   `39`
+- Neutral failure-evidence tag:
+  `archive/gdn-mqar-single-baseline-20260731-p005-failed-lease-floor`
+- GitHub failure-evidence prerelease:
+  `https://github.com/yanghu819/zoology/releases/tag/archive/gdn-mqar-single-baseline-20260731-p005-failed-lease-floor`
+
+The annotated tag peels to terminal result commit
+`c1c7331f3e9274c61a3a76843117b9e98e1305d5`. GitHub reports all three
+assets uploaded, and their server-side SHA-256 digests exactly match the local
+archive, sidecar, and inventory. This is neutral failure evidence, not an
+experiment-score tag.
 
 ## 7. Results
 
