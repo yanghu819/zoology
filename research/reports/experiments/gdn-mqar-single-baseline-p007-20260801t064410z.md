@@ -4,7 +4,7 @@
 
 - Plan: `P-BASELINE-007`
 - Run: `gdn-mqar-single-baseline-p007-20260801t064410z`
-- State: `approved / fresh GPU2 restart not yet requested`
+- State: `approved / fresh GPU2 request Pending; allocation restart consumed`
 - Proposed UTC: `2026-08-01T06:44:10Z`
 - Approved UTC: `2026-08-01T06:44:10Z`
 - Approval: after a read-only helper status proved that GPU2 had eventually
@@ -17,11 +17,12 @@
   `NVIDIA-A100-SXM4-80GB:1`, and had `remainTime=12150`; it is therefore real
   usable A100 state but 1,050 seconds below the unchanged initial 13,200-second
   admission floor
-- Allocation action: after this approved record is pushed and GitHub-verified,
-  preserve one no-clobber status, restart literal GPU2 exactly once, require a
-  new request ID and the unchanged image, then wait status-only until the new
-  request reports both `Running` and the exact A100 resource before consuming
-  the sole initial admission attempt
+- Allocation action: after the approved record was pushed and GitHub-verified,
+  one no-clobber status was preserved and literal GPU2 was restarted exactly
+  once. The new request ID and unchanged image passed validation. The new
+  request is now status-only until it reports both `Running`, the exact A100
+  resource, and at least 13,200 seconds before the sole initial admission
+  attempt may be consumed
 - Remote root: `/huyang2/zoology`
 - Formal source SHA:
   `13f880b5fe61619a1006ef33610de69fbabaaec1`
@@ -32,14 +33,25 @@
 - Operational-control tree:
   `7d9e3c706f932a0d69043a4464eba53acd7aa871`
 - Parent experiment: `P-BASELINE-006`, terminal `failed`
+- GitHub-verified P007 approval commit:
+  `0eb196170a1259483a5c9ca2efc059acd1ccdb19`
+- GitHub-verified P007 approval tree:
+  `aa0a5c4d32c87679cc546cbd8b26be6671b06261`
+- Allocation replacement UTC: `2026-08-01T07:14:34Z`
+- Allocation transition: the one authorized literal-GPU2 restart replaced old
+  request `08a8c186-788c-42dc-b899-e4f645d05c61` with new request
+  `b0411955-3f8d-445d-a164-2bd435f8be1f`; the unchanged image returned
+  `Pending`, placeholder `resource=GPU:1`, and `remainTime=-`
 
 The production `_validate_run_id` parser accepted the all-lowercase run ID,
 and its local report and artifact paths were absent before this proposal was
-created. No P007 AIStation restart, probe, workspace request, remote directory,
-formal capture, worker, training, model, metric, or score was created while
-preparing this record. GPU1 was not queried or mutated.
+created. After the approval commit was GitHub-verified, P007 saved one literal
+GPU2 pre-restart status and invoked `restart GPU2` exactly once. No probe,
+SSH/helper exec, remote directory, formal capture, worker, training, model,
+metric, or score was created. GPU1 was not queried or mutated.
 
-P007 is a newly approved experiment. It does not reopen, delete, rename,
+P007 is a newly approved experiment with its sole allocation restart now
+consumed. It does not reopen, delete, rename,
 retry, or reinterpret P001–P006. The approval applies only to restarting the
 literal GPU2 row for a fresh lease and executing this separately tracked,
 already-frozen single setting. It does not authorize GPU1, another scientific
@@ -105,7 +117,9 @@ timed-out run is terminal failed.
 ## 4. Environment and admission
 
 - AIStation target: logical `GPU2` only
-- Fresh request state after approval: must become `Running`
+- Ledgered fresh request: `b0411955-3f8d-445d-a164-2bd435f8be1f`
+- Fresh request state after allocation replacement: `Pending`; must become
+  `Running` with exact A100 metadata and the full initial lease floor
 - Initial remaining-time floor: `13,200` seconds
 - Pre-capture ordinary-status floor: `12,120` seconds
 - Formal captured remaining-time floor: `12,060` seconds
@@ -262,20 +276,29 @@ Admission is fail-closed:
 ## 5. Planned commands and evidence
 
 The commands below are the frozen execution contract. They run under local
-/bin/bash only after a new explicit approval for P007. The approved helper may
-be called directly only for allocation discovery and read-only quiescence
+/bin/bash only under the explicit P007 approval recorded in Section 1. The
+approved helper may be called directly only for allocation discovery and read-only quiescence
 polls. Every operation that can advance remote state is executed exactly once
 through the tracked admission module, which validates both the helper process
 and its returned operation JSON.
 
-The allocation replacement is the sole pre-admission exception. After this
-approved record is GitHub-verified, the orchestrator saves one no-clobber
-`status GPU2`, calls `restart GPU2` exactly once without an outer timeout, and
-saves stdout, stderr, exit, helper hashes, and a receipt. It accepts only the
-ledgered old request, unchanged image, a new request ID, and the exact
-Running-to-Pause-to-active action chain. The fresh request ID/state and raw
-hashes are committed and GitHub-verified before the post-restart block below
-may proceed. The restart is never re-entered.
+The allocation replacement is the sole pre-admission exception and has now
+completed. After the approved record was GitHub-verified, the orchestrator
+saved one no-clobber `status GPU2`, called `restart GPU2` exactly once without
+an outer timeout, and saved stdout, stderr, helper hashes, and a receipt. The
+response bound the ledgered old request, unchanged image, new request
+`b0411955-3f8d-445d-a164-2bd435f8be1f`, and exact
+Running-to-Pause-to-active action chain. The restart returned `Pending` with
+placeholder `resource=GPU:1`. Its pre-status/restart/receipt SHA-256 values are
+`64b0c0c6ad9056709b2a5a7a24101a6c11d76e5d403bfc1da52be94336ee9c36`,
+`0028018b9de167e3e0c99374104687130c8611ce8845ae69b3ff3689ee4ee49c`,
+and `70a1648e8c2f456a2fa4f95ec337e5cc9d14e7cbf4cb68ca11bb3539c5305ab5`.
+The controller and approved helper SHA-256 values were respectively
+`cf5e6b1783633bff4a3d9b2c28d9428fad8480d3dbb4e3e61fab31577bd142d3`
+and `628aefaa2de3eb09ad5e6e1397e04280650e01847da2d9192566137405230226`
+before and after execution. This allocation transition must be committed,
+pushed, and GitHub-verified before the post-restart block below may proceed.
+The restart is never re-entered.
 
     set -euo pipefail
 
@@ -326,7 +349,8 @@ may proceed. The restart is never re-entered.
     root = Path(sys.argv[1])
     pattern = re.compile(
         r"(?:status-discovery-[0-9]{4}[.]json|"
-        r"restart-[0-9]{4}[.](?:json|stderr|receipt[.]json))"
+        r"status-pre-restart-[0-9]{4}[.](?:json|stderr)|"
+        r"restart-[0-9]{4}[.](?:json|stderr|attempt[.]json|receipt[.]json))"
     )
     for path in root.iterdir():
         if path.is_symlink() or not path.is_file() or pattern.fullmatch(path.name) is None:
@@ -694,8 +718,19 @@ be uploaded to GitHub.
 
 ## 6. Artifacts
 
-- Planned allocation/admission evidence:
+- Allocation/admission evidence:
   `artifacts/admission-gdn-mqar-single-baseline-p007-20260801t064410z/`.
+  It currently contains six no-clobber regular files: the pre-restart status
+  and empty stderr, restart attempt, raw restart response and empty stderr, and
+  canonical restart receipt. The response hashes are recorded in Section 5;
+  the two empty stderr files each have SHA-256
+  `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`,
+  and the attempt has SHA-256
+  `c1d496187cc933d73069f899f8389d8bbf5426b01d4d6d29a624094f58d5e280`.
+- Executed allocation controller:
+  `artifacts/allocation-control-gdn-mqar-single-baseline-p007-20260801t064410z/restart_gpu2_once.py`,
+  SHA-256
+  `cf5e6b1783633bff4a3d9b2c28d9428fad8480d3dbb4e3e61fab31577bd142d3`.
 - Planned formal controller:
   `artifacts/gdn-mqar-single-baseline-p007-20260801t064410z/controller/`.
 - Planned remote suite:
@@ -705,14 +740,20 @@ be uploaded to GitHub.
 - Planned terminal safe inventory/archive:
   `artifacts/gdn-mqar-single-baseline-p007-20260801t064410z/`.
 
-None of these P007 paths exists yet. P006 evidence is not copied into P007.
-Model, data, cache, checkpoint, optimizer, and weight files will never be
-uploaded to GitHub or included in the safe evidence archive.
+The allocation evidence and allocation controller paths exist; no formal
+controller, remote P007 suite, remote run-artifact directory, or terminal
+archive exists. P006 evidence is not copied into P007. Model, data, cache,
+checkpoint, optimizer, and weight files will never be uploaded to GitHub or
+included in the safe evidence archive.
 
 ## 7. Results
 
-Not started. No P007 allocation replacement, admission, formal worker, metric,
-or threshold comparison exists.
+Allocation replacement completed before admission. Old request
+`08a8c186-788c-42dc-b899-e4f645d05c61` reported Running on exact A100 with
+9,298 seconds remaining immediately before the single restart; the restart
+returned new request `b0411955-3f8d-445d-a164-2bd435f8be1f` as Pending with
+placeholder resource metadata. No admission, probe, SSH, formal worker,
+metric, or threshold comparison exists.
 
 ## 8. Official comparison
 
@@ -722,7 +763,9 @@ blank.
 
 ## 9. Decision and reusable lesson
 
-Approved. A complete valid result is strong only if overall final accuracy is
+Approved and waiting for the ledgered new GPU2 request; the sole allocation
+restart is consumed. A complete valid result is strong only if overall final
+accuracy is
 at least `0.98` and final KV256 accuracy is at least `0.88`; only that result
 may receive an `exp/score-*` tag. Overall `0.96` to below `0.98` is visual-only;
 a lower complete result is negative. Any failed gate, incomplete result, or
