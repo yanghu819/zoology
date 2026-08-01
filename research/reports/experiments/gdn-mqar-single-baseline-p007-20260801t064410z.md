@@ -4,7 +4,7 @@
 
 - Plan: `P-BASELINE-007`
 - Run: `gdn-mqar-single-baseline-p007-20260801t064410z`
-- State: `approved / fresh GPU2 request Pending; allocation restart consumed`
+- State: `in-progress / initial admission verified; no remote mutation yet`
 - Proposed UTC: `2026-08-01T06:44:10Z`
 - Approved UTC: `2026-08-01T06:44:10Z`
 - Approval: after a read-only helper status proved that GPU2 had eventually
@@ -37,21 +37,35 @@
   `0eb196170a1259483a5c9ca2efc059acd1ccdb19`
 - GitHub-verified P007 approval tree:
   `aa0a5c4d32c87679cc546cbd8b26be6671b06261`
+- GitHub-verified allocation-ledger commit:
+  `7185831bcb77a89f2af7aafce306802a7dbad99a`
+- GitHub-verified allocation-ledger tree:
+  `ec4bd1244cb77852464d0c5aef1e943c890b852b`
 - Allocation replacement UTC: `2026-08-01T07:14:34Z`
 - Allocation transition: the one authorized literal-GPU2 restart replaced old
   request `08a8c186-788c-42dc-b899-e4f645d05c61` with new request
   `b0411955-3f8d-445d-a164-2bd435f8be1f`; the unchanged image returned
   `Pending`, placeholder `resource=GPU:1`, and `remainTime=-`
+- Initial admission interval:
+  `2026-08-01T07:30:21.941555Z`–`2026-08-01T07:30:28.910298Z`
+- Initial admission: the frozen gate verified the ledgered request as
+  `Running`, exact `NVIDIA-A100-SXM4-80GB:1`, with 13,459 seconds remaining;
+  host `itcqig41q4gj-0`, boot ID
+  `08d861e6-ce7b-4fe8-ba78-de529efd1b31`, remote Unix `1785569173`, and GPU UUID
+  `GPU-1522da54-4d66-ddda-298e-422ca5bb6516`
 
 The production `_validate_run_id` parser accepted the all-lowercase run ID,
 and its local report and artifact paths were absent before this proposal was
 created. After the approval commit was GitHub-verified, P007 saved one literal
-GPU2 pre-restart status and invoked `restart GPU2` exactly once. No probe,
-SSH/helper exec, remote directory, formal capture, worker, training, model,
-metric, or score was created. GPU1 was not queried or mutated.
+GPU2 pre-restart status and invoked `restart GPU2` exactly once. After the
+allocation ledger was GitHub-verified, the frozen gate performed the sole
+initial status/probe/identity admission and one receipt-owned read-only GPU
+UUID query. No remote path, source checkout, launcher upload, formal capture,
+worker, training, model, metric, or score was created. GPU1 was not queried or
+mutated.
 
-P007 is a newly approved experiment with its sole allocation restart now
-consumed. It does not reopen, delete, rename,
+P007 is now in progress with its sole allocation restart and sole initial
+admission attempt consumed. It does not reopen, delete, rename,
 retry, or reinterpret P001–P006. The approval applies only to restarting the
 literal GPU2 row for a fresh lease and executing this separately tracked,
 already-frozen single setting. It does not authorize GPU1, another scientific
@@ -118,8 +132,21 @@ timed-out run is terminal failed.
 
 - AIStation target: logical `GPU2` only
 - Ledgered fresh request: `b0411955-3f8d-445d-a164-2bd435f8be1f`
-- Fresh request state after allocation replacement: `Pending`; must become
-  `Running` with exact A100 metadata and the full initial lease floor
+- Initial admitted state: `Running`, exact `NVIDIA-A100-SXM4-80GB:1`,
+  13,459 seconds remaining
+- GPU UUID: `GPU-1522da54-4d66-ddda-298e-422ca5bb6516`
+- Remote host: `itcqig41q4gj-0`
+- Remote boot ID: `08d861e6-ce7b-4fe8-ba78-de529efd1b31`
+- Initial observation SHA-256:
+  `9ea2abb312b1fa0fc91a80982c1808afe6e6e965aabc7c54a744b0701c485aa1`
+- Initial raw status/probe/identity SHA-256:
+  `3722f4ee5083fd4789bf94226742b09a9a164f2c707262c6ed0ae116e48db637`,
+  `6e1860e6f1391acc27869dc1ec90bba6bab46fc5f8440f8aba8dfbb49303215b`,
+  and `b0e036a3282d5b038dd8e77ed73b972c771982da63da02f3f930928eb36e51c5`
+- Read-only GPU-identity operation attempt/raw/receipt SHA-256:
+  `036de5aa4d3e02d030d06f4386ce357908cd942bec653a7dad22213fceacc178`,
+  `56671960f60e474fc34e7d65aefd445fe77afd86f5aafb737031faff781ec912`,
+  and `490eacca869f5334373b65735d2cc32a22a41356dadfb18d345973750b991f79`
 - Initial remaining-time floor: `13,200` seconds
 - Pre-capture ordinary-status floor: `12,120` seconds
 - Formal captured remaining-time floor: `12,060` seconds
@@ -476,6 +503,15 @@ floor may reach the initial admission capture below.
     $PYTHON -m repro.aistation_admission_gate capture       --helper "$AISTATION_HELPER"       --output-dir "$ADMISSION"       --run-id "$RUN_ID"       --phase initial       --module-sha256 "$ADMISSION_GATE_SHA"
     $PYTHON -m repro.aistation_admission_gate verify       --output-dir "$ADMISSION"       --run-id "$RUN_ID"       --phase initial       --module-sha256 "$ADMISSION_GATE_SHA"
 
+The sole initial admission completed and verified at 13,459 seconds. Because
+the approved helper's fixed probe reports model, memory, utilization, and host
+but not GPU UUID, one receipt-owned read-only `run-operation` then asserted the
+same host and boot ID and queried `uuid,name`. It bound
+`GPU-1522da54-4d66-ddda-298e-422ca5bb6516` and exact
+`NVIDIA A100-SXM4-80GB` without creating or changing a remote path. Its stage
+is `initial-gpu-identity`; its evidence hashes are recorded in Section 4. This
+stage is complete and is never re-entered.
+
 These four local functions are the only state-progressing helper transport
 after initial admission. Binding-parent functions also revalidate the complete
 clock binding before and after the helper call.
@@ -720,10 +756,13 @@ be uploaded to GitHub.
 
 - Allocation/admission evidence:
   `artifacts/admission-gdn-mqar-single-baseline-p007-20260801t064410z/`.
-  It currently contains six no-clobber regular files: the pre-restart status
-  and empty stderr, restart attempt, raw restart response and empty stderr, and
-  canonical restart receipt. The response hashes are recorded in Section 5;
-  the two empty stderr files each have SHA-256
+  It currently contains fourteen no-clobber regular files: six restart files,
+  one discovery status, the three raw initial-admission responses, the
+  canonical initial observation, and the GPU-identity operation's attempt/raw/
+  receipt triplet. The response and admission hashes are recorded in Sections
+  4–5. The discovery status has SHA-256
+  `4c909449e9f7d89bcda7c1dcd837bf08c2d073d64fc13718a1ef96ee2665de2f`;
+  the two empty restart stderr files each have SHA-256
   `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`,
   and the attempt has SHA-256
   `c1d496187cc933d73069f899f8389d8bbf5426b01d4d6d29a624094f58d5e280`.
@@ -740,11 +779,11 @@ be uploaded to GitHub.
 - Planned terminal safe inventory/archive:
   `artifacts/gdn-mqar-single-baseline-p007-20260801t064410z/`.
 
-The allocation evidence and allocation controller paths exist; no formal
-controller, remote P007 suite, remote run-artifact directory, or terminal
-archive exists. P006 evidence is not copied into P007. Model, data, cache,
-checkpoint, optimizer, and weight files will never be uploaded to GitHub or
-included in the safe evidence archive.
+The allocation/admission evidence and allocation controller paths exist; no
+formal controller, remote P007 suite, remote run-artifact directory, or
+terminal archive exists. P006 evidence is not copied into P007. Model, data,
+cache, checkpoint, optimizer, and weight files will never be uploaded to
+GitHub or included in the safe evidence archive.
 
 ## 7. Results
 
@@ -752,8 +791,12 @@ Allocation replacement completed before admission. Old request
 `08a8c186-788c-42dc-b899-e4f645d05c61` reported Running on exact A100 with
 9,298 seconds remaining immediately before the single restart; the restart
 returned new request `b0411955-3f8d-445d-a164-2bd435f8be1f` as Pending with
-placeholder resource metadata. No admission, probe, SSH, formal worker,
-metric, or threshold comparison exists.
+placeholder resource metadata. The same new request then passed the sole
+strict initial admission at exact A100 with 13,459 seconds remaining, and the
+receipt-owned read-only query bound GPU UUID
+`GPU-1522da54-4d66-ddda-298e-422ca5bb6516`, host `itcqig41q4gj-0`, and boot ID
+`08d861e6-ce7b-4fe8-ba78-de529efd1b31`. No remote path, source checkout,
+launcher upload, formal worker, metric, or threshold comparison exists.
 
 ## 8. Official comparison
 
@@ -763,10 +806,10 @@ blank.
 
 ## 9. Decision and reusable lesson
 
-Approved and waiting for the ledgered new GPU2 request; the sole allocation
-restart is consumed. A complete valid result is strong only if overall final
-accuracy is
-at least `0.98` and final KV256 accuracy is at least `0.88`; only that result
+In progress after verified initial admission; the sole allocation restart and
+initial admission attempt are consumed. A complete valid result is strong only
+if overall final accuracy is at least `0.98` and final KV256 accuracy is at
+least `0.88`; only that result
 may receive an `exp/score-*` tag. Overall `0.96` to below `0.98` is visual-only;
 a lower complete result is negative. Any failed gate, incomplete result, or
 timeout is terminal failed and is never retried.
