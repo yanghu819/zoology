@@ -15,8 +15,20 @@
   `5186b27a-139a-4eb7-8b99-4ad64683c64f` was `Halt` with reported remaining
   time `-312` seconds
 - GPU2 replacement request:
-  `34cad2d9-a825-416f-a644-8279b2084331`, `Pending`, opened at
-  `2026-07-31T14:16:10Z`; no probe or SSH has been attempted
+  `34cad2d9-a825-416f-a644-8279b2084331`, opened at
+  `2026-07-31T14:16:10Z` and observed `Halt` with remaining time `-186` at
+  `2026-08-01T03:44:38Z`; no intermediate status was captured, so whether it
+  briefly became Running is unknown, but it was never admitted, probed, or
+  accessed through SSH
+- Current GPU2 replacement request:
+  `08a8c186-788c-42dc-b899-e4f645d05c61`, `Pending`, opened at
+  `2026-08-01T03:45:45Z` under the user's standing same-row reopen
+  authorization; no probe or SSH has been attempted
+- Monitoring diagnosis: the existing
+  `run-zoology-gpu2-single-baseline` heartbeat was found `PAUSED`, explaining
+  why no intermediate status was captured; it must be updated to this P006
+  contract and reactivated only after this ledger transition is
+  GitHub-verified
 - Remote root: `/huyang2/zoology`
 - Formal source SHA:
   `13f880b5fe61619a1006ef33610de69fbabaaec1`
@@ -363,10 +375,11 @@ and its returned operation JSON.
     }
 
 Allocation discovery uses only literal GPU2. Every response is saved under a
-new name and never overwritten. Halt permits one open after approval;
-Pending/Queuing permits only another uniquely named status poll. Neither a
-discovery response nor open permits probing or source mutation. Only the
-initial admission capture below can do that.
+new name and never overwritten. Halt permits one open for that observation
+under the user's standing same-row reopen authorization; Pending/Queuing
+permits only another uniquely named status poll. Neither a discovery response
+nor open permits probing or source mutation. Only the initial admission
+capture below can do that.
 
     DISCOVERY_RAW=$(next_numbered_path status-discovery) || exit 1
     guarded_node "$DISCOVERY_RAW" status GPU2
@@ -385,10 +398,18 @@ initial admission capture below can do that.
     target = targets[0]
     state = target.get("wpStatus") if type(target) is dict else None
     workspace = target.get("wpId") if type(target) is dict else None
+    resource = target.get("resource") if type(target) is dict else None
     if (
         target.get("wpName") != "GPU2"
-        or target.get("resource") != "NVIDIA-A100-SXM4-80GB:1"
         or state not in {"Halt", "Pending", "Queuing", "Running"}
+        or (
+            state == "Running"
+            and resource != "NVIDIA-A100-SXM4-80GB:1"
+        )
+        or (
+            state != "Running"
+            and resource not in {"GPU:1", "NVIDIA-A100-SXM4-80GB:1"}
+        )
         or type(workspace) is not str
         or not workspace
     ):
@@ -398,7 +419,6 @@ initial admission capture below can do that.
     )
 
     if [ "$DISCOVERY_STATE" = Halt ]; then
-      test -z "$(find "$ADMISSION" -maxdepth 1 -type f -name 'open-[0-9][0-9][0-9][0-9].json' -print -quit)"
       OPEN_RAW=$(next_numbered_path open) || exit 1
       guarded_node "$OPEN_RAW" open GPU2
       OPEN_STATE=$(
@@ -693,6 +713,13 @@ be uploaded to GitHub.
 - Local one-shot open response:
   `artifacts/admission-gdn-mqar-single-baseline-durable-20260731t120840z/open-0001.json`,
   SHA-256 `4ee1107fbfac4513bfe47b572b77718b70fc1d148df219d52d63989a0466c8ee`
+- Local status response proving the first replacement expired before
+  admission:
+  `artifacts/admission-gdn-mqar-single-baseline-durable-20260731t120840z/status-discovery-0002.json`,
+  SHA-256 `0dfbd488296556cecb8be5574b9a0fb518e4c7581c59b14dcedf381eeb65a5fc`
+- Local open response for the current replacement:
+  `artifacts/admission-gdn-mqar-single-baseline-durable-20260731t120840z/open-0002.json`,
+  SHA-256 `c7e0061f1203b440d3c9c62d9d2248cdb39d8cd4cb710c0cb843db71e930ef3b`
 - Formal controller, suite, worker, training, model, and score artifacts: not
   created
 
@@ -702,9 +729,14 @@ Not run. No formal GDN metric exists for P006.
 
 ## 8. Conclusions
 
-The expired GPU2 request was replaced exactly once. The new request is
-Pending, so P006 is wait-only: do not probe, SSH, open again, or launch until a
-fresh strict status reports Running, exact A100, and the 13,200-second floor.
+The first replacement reached Halt before admission without any formal work;
+its unobserved intermediate state is unknown. It was replaced under the
+standing same-row reopen authorization, and the current request is Pending.
+The prior heartbeat was found paused and must be updated and reactivated after
+this ledger transition is GitHub-verified. P006 is now wait-only: do not probe,
+SSH, open again, or launch while this request is active. A fresh strict status
+must report Running, exact A100, and the 13,200-second floor before admission
+can begin.
 
 ## 9. Submission record
 
