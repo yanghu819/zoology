@@ -10,6 +10,7 @@ CONTROL_NAME="linux-exact-test-envelope"
 GATE_CONTROL_NAME="linux-exact-test-gate"
 EXPECTED_TESTS=53
 WORKER_CLAIM_WAIT_TENTHS=50
+START_RECORD_WAIT_TENTHS=300
 
 usage() {
   printf '%s\n' \
@@ -202,8 +203,8 @@ if [[ "$mode" == "start" ]]; then
     --gate-sha256 "$gate_sha256" \
     --control-dir "$control_dir" \
     </dev/null >"$control_dir/envelope.log" 2>&1 &
-  supervisor_pid=$!
-  [[ "$supervisor_pid" =~ ^[1-9][0-9]*$ ]] || die "nohup did not return a supervisor PID"
+  transport_pid=$!
+  [[ "$transport_pid" =~ ^[1-9][0-9]*$ ]] || die "nohup did not return a transport PID"
 
   claim_ready=0
   for ((index = 0; index < WORKER_CLAIM_WAIT_TENTHS; index++)); do
@@ -211,10 +212,64 @@ if [[ "$mode" == "start" ]]; then
       claim_ready=1
       break
     fi
-    kill -0 "$supervisor_pid" 2>/dev/null || break
+    kill -0 "$transport_pid" 2>/dev/null || break
     sleep 0.1
   done
   [[ "$claim_ready" == 1 ]] || die "detached worker did not claim the attempt within five seconds"
+
+  claim_identity="$("$python_entry" - "$control_dir/worker-claim.json" "$run_id" \
+    "$script_sha256" "$gate_sha256" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+try:
+    claim = json.loads(path.read_text(encoding="utf-8"))
+except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+    raise SystemExit(f"invalid worker claim: {error}")
+expected = {
+    "schema_version", "run_id", "worker_pid", "worker_ppid", "script_sha256",
+    "gate_sha256", "claimed_utc", "claimed_unix",
+}
+if not isinstance(claim, dict) or set(claim) != expected:
+    raise SystemExit("worker claim schema drifted")
+if claim["schema_version"] != 1 or claim["run_id"] != sys.argv[2]:
+    raise SystemExit("worker claim identity drifted")
+if claim["script_sha256"] != sys.argv[3] or claim["gate_sha256"] != sys.argv[4]:
+    raise SystemExit("worker claim hash binding drifted")
+for key in ("worker_pid", "worker_ppid", "claimed_unix"):
+    if not isinstance(claim[key], int) or isinstance(claim[key], bool) or claim[key] <= 0:
+        raise SystemExit(f"worker claim {key} is invalid")
+print(claim["worker_pid"], claim["worker_ppid"])
+PY
+  )" || die "cannot validate detached worker claim"
+  read -r supervisor_pid claimed_worker_ppid extra_claim_value <<< "$claim_identity"
+  [[ "$supervisor_pid" =~ ^[1-9][0-9]*$ && "$claimed_worker_ppid" =~ ^[1-9][0-9]*$ && \
+    -z "${extra_claim_value:-}" ]] || die "detached worker claim identity is invalid"
+
+  proc_identity "$transport_pid" || die "cannot bind transient transport identity"
+  transport_ppid="$PROC_PPID"
+  transport_pgid="$PROC_PGID"
+  transport_sid="$PROC_SID"
+  transport_tty_nr="$PROC_TTY_NR"
+  transport_start_ticks="$PROC_START_TICKS"
+  transport_exe="$PROC_EXE"
+  transport_cwd="$PROC_CWD"
+  transport_cmdline_sha256="$PROC_CMDLINE_SHA256"
+  transport_cmdline_hex="$PROC_CMDLINE_HEX"
+  transport_cmdline_text="$PROC_CMDLINE_TEXT"
+  transport_tty="inherited"
+  [[ "$transport_tty_nr" == 0 ]] && transport_tty="none"
+  [[ "$transport_ppid" == "$$" ]] || die "transient transport parent drifted"
+  [[ "$transport_exe" == "$setsid_path" && "$transport_cwd" == "$REPO_ROOT" ]] || \
+    die "transient transport executable or cwd drifted"
+  for required in "$setsid_path" "--fork" "--wait" "$snapshot" "worker" \
+    "$run_id" "$script_sha256" "$gate_sha256"; do
+    [[ "$transport_cmdline_text" == *"$required"* ]] || \
+      die "transient transport command binding is missing: $required"
+  done
+
   proc_identity "$supervisor_pid" || die "cannot bind detached supervisor identity"
   supervisor_ppid="$PROC_PPID"
   supervisor_pgid="$PROC_PGID"
@@ -226,20 +281,34 @@ if [[ "$mode" == "start" ]]; then
   supervisor_cmdline_sha256="$PROC_CMDLINE_SHA256"
   supervisor_cmdline_hex="$PROC_CMDLINE_HEX"
   supervisor_cmdline_text="$PROC_CMDLINE_TEXT"
+  [[ "$claimed_worker_ppid" == "$transport_pid" && "$supervisor_ppid" == "$transport_pid" ]] || \
+    die "detached supervisor parent differs from the transport"
+  [[ "$supervisor_pid" == "$supervisor_pgid" && "$supervisor_pid" == "$supervisor_sid" ]] || \
+    die "detached supervisor is not a session and process-group leader"
   [[ "$supervisor_tty_nr" == 0 ]] || die "detached supervisor retained a controlling terminal"
+  [[ "$supervisor_exe" == "$bash_path" && "$supervisor_cwd" == "$REPO_ROOT" ]] || \
+    die "detached supervisor executable or cwd drifted"
+  for required in "$bash_path" "$snapshot" "worker" "$run_id" "$script_sha256" "$gate_sha256"; do
+    [[ "$supervisor_cmdline_text" == *"$required"* ]] || \
+      die "detached supervisor command binding is missing: $required"
+  done
 
   recorded_utc="$(utc_now)" || die "cannot read start-record UTC"
   recorded_unix="$(unix_now)" || die "cannot read start-record Unix time"
-  start_json="$(printf '{\n  "schema_version": 1,\n  "run_id": "%s",\n  "script_sha256": "%s",\n  "gate_sha256": "%s",\n  "supervisor_pid": %s,\n  "supervisor_ppid": %s,\n  "supervisor_pgid": %s,\n  "supervisor_sid": %s,\n  "supervisor_tty": "none",\n  "supervisor_tty_nr": %s,\n  "supervisor_start_ticks": %s,\n  "supervisor_exe": "%s",\n  "supervisor_cwd": "%s",\n  "supervisor_cmdline_text": "%s",\n  "supervisor_cmdline_hex": "%s",\n  "supervisor_cmdline_sha256": "%s",\n  "nohup_path": "%s",\n  "setsid_path": "%s",\n  "bash_path": "%s",\n  "python_entry": "%s",\n  "python_target": "%s",\n  "stdin": "/dev/null",\n  "envelope_log": "%s",\n  "attempt_sha256": "%s",\n  "worker_claim_sha256": "%s",\n  "recorded_utc": "%s",\n  "recorded_unix": %s\n}' \
-    "$run_id" "$script_sha256" "$gate_sha256" "$supervisor_pid" "$supervisor_ppid" \
+  start_json="$(printf '{\n  "schema_version": 2,\n  "run_id": "%s",\n  "script_sha256": "%s",\n  "gate_sha256": "%s",\n  "transport_pid": %s,\n  "transport_ppid": %s,\n  "transport_pgid": %s,\n  "transport_sid": %s,\n  "transport_tty": "%s",\n  "transport_tty_nr": %s,\n  "transport_start_ticks": %s,\n  "transport_exe": "%s",\n  "transport_cwd": "%s",\n  "transport_cmdline_text": "%s",\n  "transport_cmdline_hex": "%s",\n  "transport_cmdline_sha256": "%s",\n  "supervisor_pid": %s,\n  "supervisor_ppid": %s,\n  "supervisor_pgid": %s,\n  "supervisor_sid": %s,\n  "supervisor_tty": "none",\n  "supervisor_tty_nr": %s,\n  "supervisor_start_ticks": %s,\n  "supervisor_exe": "%s",\n  "supervisor_cwd": "%s",\n  "supervisor_cmdline_text": "%s",\n  "supervisor_cmdline_hex": "%s",\n  "supervisor_cmdline_sha256": "%s",\n  "nohup_path": "%s",\n  "setsid_path": "%s",\n  "bash_path": "%s",\n  "python_entry": "%s",\n  "python_target": "%s",\n  "stdin": "/dev/null",\n  "envelope_log": "%s",\n  "attempt_sha256": "%s",\n  "worker_claim_sha256": "%s",\n  "recorded_utc": "%s",\n  "recorded_unix": %s\n}' \
+    "$run_id" "$script_sha256" "$gate_sha256" \
+    "$transport_pid" "$transport_ppid" "$transport_pgid" "$transport_sid" "$transport_tty" \
+    "$transport_tty_nr" "$transport_start_ticks" "$transport_exe" "$transport_cwd" \
+    "$transport_cmdline_text" "$transport_cmdline_hex" "$transport_cmdline_sha256" \
+    "$supervisor_pid" "$supervisor_ppid" \
     "$supervisor_pgid" "$supervisor_sid" "$supervisor_tty_nr" "$supervisor_start_ticks" \
     "$supervisor_exe" "$supervisor_cwd" "$supervisor_cmdline_text" "$supervisor_cmdline_hex" \
     "$supervisor_cmdline_sha256" "$nohup_path" "$setsid_path" "$bash_path" "$python_entry" \
     "$try_python_target" "$control_dir/envelope.log" "$(sha256_file "$control_dir/attempt.json")" \
     "$(sha256_file "$control_dir/worker-claim.json")" "$recorded_utc" "$recorded_unix")" || die "cannot build start record"
   write_atomic "$control_dir/start.json" "$start_json" || die "cannot persist start record"
-  printf '{"control_dir":"%s","run_id":"%s","supervisor_pid":%s,"script_sha256":"%s","gate_sha256":"%s"}\n' \
-    "$control_dir" "$run_id" "$supervisor_pid" "$script_sha256" "$gate_sha256"
+  printf '{"control_dir":"%s","run_id":"%s","transport_pid":%s,"supervisor_pid":%s,"script_sha256":"%s","gate_sha256":"%s"}\n' \
+    "$control_dir" "$run_id" "$transport_pid" "$supervisor_pid" "$script_sha256" "$gate_sha256"
   exit 0
 fi
 
@@ -301,14 +370,14 @@ if [[ "$mode" == "worker" ]]; then
   write_atomic "$control_dir/worker-claim.json" "$worker_claim_json" || die "worker claim already exists"
 
   start_ready=0
-  for ((index = 0; index < WORKER_CLAIM_WAIT_TENTHS; index++)); do
+  for ((index = 0; index < START_RECORD_WAIT_TENTHS; index++)); do
     if [[ -f "$control_dir/start.json" && ! -L "$control_dir/start.json" ]]; then
       start_ready=1
       break
     fi
     sleep 0.1
   done
-  [[ "$start_ready" == 1 ]] || die "starter did not publish start.json within five seconds"
+  [[ "$start_ready" == 1 ]] || die "starter did not publish start.json within thirty seconds"
 
   worker_hostname="$(hostname)" || die "cannot read worker hostname"
   worker_boot_id="$(boot_id_now)" || die "cannot read worker boot id"
@@ -521,7 +590,10 @@ attempt = load("attempt.json", {
     "starter_pid", "started_utc", "started_unix", "hostname", "boot_id",
 })
 start = load("start.json", {
-    "schema_version", "run_id", "script_sha256", "gate_sha256", "supervisor_pid",
+    "schema_version", "run_id", "script_sha256", "gate_sha256", "transport_pid",
+    "transport_ppid", "transport_pgid", "transport_sid", "transport_tty",
+    "transport_tty_nr", "transport_start_ticks", "transport_exe", "transport_cwd",
+    "transport_cmdline_text", "transport_cmdline_hex", "transport_cmdline_sha256", "supervisor_pid",
     "supervisor_ppid", "supervisor_pgid", "supervisor_sid", "supervisor_tty",
     "supervisor_tty_nr", "supervisor_start_ticks", "supervisor_exe", "supervisor_cwd",
     "supervisor_cmdline_text", "supervisor_cmdline_hex", "supervisor_cmdline_sha256",
@@ -555,11 +627,15 @@ terminal = load("terminal.json", {
     "started_utc", "started_unix", "ended_utc", "ended_unix", "evidence_sha256",
 })
 
-records = (attempt, start, claim, worker, gate, terminal)
+records = (attempt, claim, worker, gate, terminal)
 if any(record.get("schema_version") != 1 or record.get("run_id") != run_id for record in records):
     fail("schema version or run id binding drifted")
+if start.get("schema_version") != 2 or start.get("run_id") != run_id:
+    fail("start schema version or run id binding drifted")
 if any(record.get("script_sha256") != script_sha or record.get("gate_sha256") != gate_sha for record in records):
     fail("script hash binding drifted")
+if start.get("script_sha256") != script_sha or start.get("gate_sha256") != gate_sha:
+    fail("start script hash binding drifted")
 if attempt["kind"] != "durable-linux-exact-test-gate" or terminal["kind"] != attempt["kind"]:
     fail("envelope kind drifted")
 if terminal["status"] != "completed" or terminal["reason"] != "exactly-53-tests-passed-with-zero-nonpasses":
@@ -623,10 +699,14 @@ def verify_cmdline(record, prefix):
         fail(f"{prefix}cmdline text drifted")
     return text
 
+transport_cmd = verify_cmdline(start, "transport_")
 supervisor_cmd = verify_cmdline(start, "supervisor_")
 worker_cmd = verify_cmdline(worker, "proc_")
 gate_cmd = verify_cmdline(gate, "proc_")
 for required in (start["setsid_path"], "--fork", "--wait", str(control / "script-snapshot.sh"), "worker", run_id, script_sha, gate_sha):
+    if required not in transport_cmd:
+        fail(f"transport command binding is missing: {required}")
+for required in (start["bash_path"], str(control / "script-snapshot.sh"), "worker", run_id, script_sha, gate_sha):
     if required not in supervisor_cmd:
         fail(f"supervisor command binding is missing: {required}")
 for required in (start["bash_path"], str(control / "script-snapshot.sh"), "worker", run_id, script_sha, gate_sha):
@@ -636,16 +716,41 @@ for required in (str(launcher / "linux_exact_test_gate.py"), "--run-id", run_id,
     if required not in gate_cmd:
         fail(f"gate command binding is missing: {required}")
 
+if start["supervisor_pid"] != claim["worker_pid"] or start["supervisor_ppid"] != claim["worker_ppid"]:
+    fail("supervisor claim binding drifted")
 if worker["pid"] != claim["worker_pid"] or worker["ppid"] != claim["worker_ppid"]:
     fail("worker PID binding drifted")
-if start["supervisor_ppid"] != attempt["starter_pid"] or worker["ppid"] != start["supervisor_pid"]:
-    fail("supervisor and worker parent binding drifted")
+if start["transport_ppid"] != attempt["starter_pid"] or start["supervisor_ppid"] != start["transport_pid"]:
+    fail("transport and supervisor parent binding drifted")
+expected_transport_tty = "none" if start["transport_tty_nr"] == 0 else "inherited"
+if start["transport_tty"] != expected_transport_tty:
+    fail("transport tty evidence drifted")
+if start["transport_cwd"] != str(repo) or Path(start["transport_exe"]).resolve(strict=True) != Path(start["setsid_path"]).resolve(strict=True):
+    fail("transport cwd or executable binding drifted")
 if start["supervisor_tty"] != "none" or start["supervisor_tty_nr"] != 0:
     fail("supervisor retained a controlling terminal")
-if start["supervisor_cwd"] != str(repo) or Path(start["supervisor_exe"]).resolve(strict=True) != Path(start["setsid_path"]).resolve(strict=True):
+if start["supervisor_pid"] != start["supervisor_pgid"] or start["supervisor_pid"] != start["supervisor_sid"]:
+    fail("supervisor was not detached into its own session")
+if start["supervisor_cwd"] != str(repo) or Path(start["supervisor_exe"]).resolve(strict=True) != Path(start["bash_path"]).resolve(strict=True):
     fail("supervisor cwd or executable binding drifted")
 if worker["pid"] != worker["pgid"] or worker["pid"] != worker["sid"] or worker["tty"] != "none" or worker["tty_nr"] != 0:
     fail("worker was not detached into its own session")
+supervisor_to_worker = {
+    "supervisor_pid": "pid",
+    "supervisor_ppid": "ppid",
+    "supervisor_pgid": "pgid",
+    "supervisor_sid": "sid",
+    "supervisor_tty": "tty",
+    "supervisor_tty_nr": "tty_nr",
+    "supervisor_start_ticks": "proc_start_ticks",
+    "supervisor_exe": "proc_exe",
+    "supervisor_cwd": "proc_cwd",
+    "supervisor_cmdline_text": "proc_cmdline_text",
+    "supervisor_cmdline_hex": "proc_cmdline_hex",
+    "supervisor_cmdline_sha256": "proc_cmdline_sha256",
+}
+if any(start[start_key] != worker[worker_key] for start_key, worker_key in supervisor_to_worker.items()):
+    fail("supervisor identity changed after start publication")
 if Path(worker["proc_exe"]).resolve(strict=True) != Path(start["bash_path"]).resolve(strict=True):
     fail("worker executable binding drifted")
 if gate["pid"] != gate["pgid"] or gate["pid"] != gate["sid"] or gate["tty"] != "none" or gate["tty_nr"] != 0:
@@ -841,8 +946,15 @@ def require_process_absent(pid, pgid, label):
 
 require_process_absent(worker["pid"], worker["pgid"], "worker")
 require_process_absent(gate["pid"], gate["pgid"], "gate")
-if (Path("/proc") / str(start["supervisor_pid"])).exists():
-    fail(f"supervisor PID is still present: {start['supervisor_pid']}")
+transport_stat = Path("/proc") / str(start["transport_pid"]) / "stat"
+if transport_stat.exists():
+    try:
+        transport_fields = transport_stat.read_text(encoding="ascii").rsplit(") ", 1)[1].split()
+        transport_start_ticks = int(transport_fields[19])
+    except (OSError, IndexError, UnicodeDecodeError, ValueError) as error:
+        fail(f"cannot disambiguate transport PID reuse: {error}")
+    if transport_start_ticks == start["transport_start_ticks"]:
+        fail(f"transport PID is still present: {start['transport_pid']}")
 
 print(json.dumps({
     "status": "verified",
