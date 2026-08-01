@@ -4,9 +4,10 @@
 
 - Plan: `P-BASELINE-007`
 - Run: `gdn-mqar-single-baseline-p007-20260801t064410z`
-- State: `in-progress / initial admission verified; no remote mutation yet`
+- State: `failed / Linux exact-test start consumed before Python gate`
 - Proposed UTC: `2026-08-01T06:44:10Z`
 - Approved UTC: `2026-08-01T06:44:10Z`
+- Terminal UTC: `2026-08-01T07:37:50Z`
 - Approval: after a read-only helper status proved that GPU2 had eventually
   become exact A100 but had only 12,150 seconds remaining, the user explicitly
   replied `do` to the proposed separately tracked P007 and fresh GPU2 restart
@@ -20,9 +21,8 @@
 - Allocation action: after the approved record was pushed and GitHub-verified,
   one no-clobber status was preserved and literal GPU2 was restarted exactly
   once. The new request ID and unchanged image passed validation. The new
-  request is now status-only until it reports both `Running`, the exact A100
-  resource, and at least 13,200 seconds before the sole initial admission
-  attempt may be consumed
+  request later reported `Running`, exact A100, and sufficient lease, then
+  passed the sole initial admission attempt
 - Remote root: `/huyang2/zoology`
 - Formal source SHA:
   `13f880b5fe61619a1006ef33610de69fbabaaec1`
@@ -41,6 +41,10 @@
   `7185831bcb77a89f2af7aafce306802a7dbad99a`
 - GitHub-verified allocation-ledger tree:
   `ec4bd1244cb77852464d0c5aef1e943c890b852b`
+- GitHub-verified initial-admission ledger commit:
+  `56762a853575f910e68b75b325ad1ca6bc578f9a`
+- GitHub-verified initial-admission ledger tree:
+  `77b5d5f74dfc24febe6ed0384ca022dc53d2af24`
 - Allocation replacement UTC: `2026-08-01T07:14:34Z`
 - Allocation transition: the one authorized literal-GPU2 restart replaced old
   request `08a8c186-788c-42dc-b899-e4f645d05c61` with new request
@@ -60,16 +64,19 @@ created. After the approval commit was GitHub-verified, P007 saved one literal
 GPU2 pre-restart status and invoked `restart GPU2` exactly once. After the
 allocation ledger was GitHub-verified, the frozen gate performed the sole
 initial status/probe/identity admission and one receipt-owned read-only GPU
-UUID query. No remote path, source checkout, launcher upload, formal capture,
-worker, training, model, metric, or score was created. GPU1 was not queried or
-mutated.
+UUID query. The exact formal source was then checked out cleanly on GPU2, the
+remote P007 artifact root was created, and the exact 19-file launcher was
+uploaded. The sole Linux exact-test start failed before the Python gate or
+pytest began. No suite, preflight, initialization, formal capture/start,
+baseline worker, training, model, metric, or score was created. GPU1 was not
+queried or mutated.
 
-P007 is now in progress with its sole allocation restart and sole initial
-admission attempt consumed. It does not reopen, delete, rename,
-retry, or reinterpret P001–P006. The approval applies only to restarting the
-literal GPU2 row for a fresh lease and executing this separately tracked,
-already-frozen single setting. It does not authorize GPU1, another scientific
-setting, a formal retry, or relaxed gates.
+P007 is terminal failed with its sole allocation restart, initial admission,
+and Linux exact-test start consumed. It is never restarted or retried. It does
+not reopen, delete, rename, retry, or reinterpret P001–P006. The approval
+applied only to restarting the literal GPU2 row for a fresh lease and executing
+this separately tracked, already-frozen single setting. It did not authorize
+GPU1, another scientific setting, a formal retry, or relaxed gates.
 
 ## 2. Hypothesis
 
@@ -176,8 +183,9 @@ timed-out run is terminal failed.
   `8740ccc65fe6b2627a47f82d4d05b9a6de0bff2e` matched `git ls-remote`
 - Local operational-control matrix: `85 passed`, `49 skipped`, `0 failed`;
   all skips require Linux `/proc`/`setsid`
-- Frozen five-module collection: exactly `53` tests; the formal run still
-  requires the GPU2 Linux gate to prove `53 passed / 0 skipped`
+- Frozen five-module collection: exactly `53` tests; P007 produced no Linux
+  result because the detached envelope failed before the Python gate or pytest
+  started, so no `53 passed / 0 skipped` proof exists
 - Durable preflight-v2 SHA-256:
   `3b1d5b682624be4149ae1ff30e9860f2904c794f047c579e00131bf7e25c93cd`
 - Durable preflight-v2 test SHA-256:
@@ -752,38 +760,82 @@ independently verify it, then update this report, plans.md, the resource ledger,
 and leaderboard.csv. Model, data, cache, checkpoint, and weight files must not
 be uploaded to GitHub.
 
+Actual execution stopped at the sole `linux-exact-test-start` operation. The
+source/artifact and launcher-push operations immediately above completed; the
+Linux start failed before its operation receipt, Python gate, or pytest. Every
+subsequent command in this frozen contract remained unexecuted and is not
+permission to resume P007.
+
 ## 6. Artifacts
 
-- Allocation/admission evidence:
-  `artifacts/admission-gdn-mqar-single-baseline-p007-20260801t064410z/`.
-  It currently contains fourteen no-clobber regular files: six restart files,
-  one discovery status, the three raw initial-admission responses, the
-  canonical initial observation, and the GPU-identity operation's attempt/raw/
-  receipt triplet. The response and admission hashes are recorded in Sections
-  4–5. The discovery status has SHA-256
-  `4c909449e9f7d89bcda7c1dcd837bf08c2d073d64fc13718a1ef96ee2665de2f`;
-  the two empty restart stderr files each have SHA-256
-  `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`,
-  and the attempt has SHA-256
-  `c1d496187cc933d73069f899f8389d8bbf5426b01d4d6d29a624094f58d5e280`.
-- Executed allocation controller:
+- Complete allocation/admission evidence directory:
+  `artifacts/admission-gdn-mqar-single-baseline-p007-20260801t064410z/`,
+  `44` regular files.
+- Executed one-shot allocation controller:
   `artifacts/allocation-control-gdn-mqar-single-baseline-p007-20260801t064410z/restart_gpu2_once.py`,
   SHA-256
   `cf5e6b1783633bff4a3d9b2c28d9428fad8480d3dbb4e3e61fab31577bd142d3`.
-- Planned formal controller:
-  `artifacts/gdn-mqar-single-baseline-p007-20260801t064410z/controller/`.
-- Planned remote suite:
-  `/huyang2/zoology/runs/gdn-mqar-single-baseline-p007-20260801t064410z/`.
-- Planned remote run artifacts:
-  `/huyang2/zoology/artifacts/gdn-mqar-single-baseline-p007-20260801t064410z/`.
-- Planned terminal safe inventory/archive:
-  `artifacts/gdn-mqar-single-baseline-p007-20260801t064410z/`.
+- Remote source/artifact operation attempt/raw/receipt SHA-256:
+  `57efa359db1bdd920c2e1471c8ef9f60a33ed2b2c192a17481b684504973b346`,
+  `0a03a0e31c0174949f057ca11450d2df5831471a36e57d29de6dd3b478674dae`,
+  and `0fae0652496a90e5a1866c0c521f0b663041573a15bf50305ef10a80e286d4a3`.
+  This receipt proves the clean detached formal SHA/tree checkout and exclusive
+  creation of the remote P007 artifact root.
+- Launcher-push operation attempt/raw/receipt SHA-256:
+  `f0c3d15f8b325fa2e907b3e3ba822b885c641c55cce943b11a0b92dda23184f0`,
+  `c1f78f5b8fabb190650e92e368cbc96c37348531135a2a296fbbf6855d65abd9`,
+  and `c7bd91131f38969a4dc207596f4f605b7b27b3af49c77931de5137c654fa793f`.
+- Consumed Linux exact-test start attempt/raw SHA-256:
+  `df7595fb4ac22b72109916b7fde84d6e38db75c756e2cb5b447b660adaab5726`
+  and `83a70ac14ec64a5870b092d82d723b5e08515db77e00b17e514c93f0fa36864e`.
+  No operation receipt exists because the helper exec failed.
+- First read-only poll and successful read-only failure audit SHA-256:
+  `551068a2bfb9a5b1c6a547c70c52058c0979ca5043357ee2c87e13a668538015`
+  and `6469af268f612402797cf260aa8bce3a8f3012e1fb5100fccfeca36865dc61e2`.
+  The audit found the failed terminal and no residual supervisor, worker, gate,
+  or matching process.
+- Terminal pull response SHA-256:
+  `ed178c9558981ef979b641edfc651e7de7d71b4a91fa12033cefce137aee47ce`.
+  It pulled exactly `27` remote regular files: the exact `19`-file launcher and
+  eight Linux-envelope files. The envelope terminal SHA-256 is
+  `5b098a43b85c755d0d271cf267366e147bfe5d7b722b507e50c3b09351b61cd1`;
+  the attempt, worker claim, log, and `gate.exit` SHA-256 values are
+  `542a83d49372bc0393660ee11c811b11d2fd16d0a62294cb06f422bb047a1e64`,
+  `f119714768ce52ad68bd2704de2db7584e73fd225da09c10b823b3bdbd8bfcc9`,
+  `d064ada9fb7b62362718b19e97744e67b00547b5a6ef2805fab4bcabd1e422e8`,
+  and `a5e45837a2959db847f7e67a915d0ecaddd47f943af2af5fa6453be497faabca`.
+- Complete safe inventory:
+  `artifacts/gdn-mqar-single-baseline-p007-20260801t064410z/complete-failure-evidence-inventory.tsv`,
+  SHA-256
+  `b9c9b76eceee7be56be913ef8509540f55c5998908d64a748a0a72c6b990198e`.
+  It closes over `72` source files: one allocation controller, `44` local
+  admission/operation files, and `27` pulled remote files.
+- Complete safe archive:
+  `artifacts/gdn-mqar-single-baseline-p007-20260801t064410z/gdn-mqar-single-baseline-p007-20260801t064410z-complete-failure-evidence.tar.gz`,
+  `227,891` bytes, SHA-256
+  `fb46a726c1e584aedbda575aa2ba63b48f43e98d6ac4ca9ede52ade5a9a3f685`.
+  Its sidecar SHA-256 is
+  `bd48287846640b6ecff7d87c6820c87c4de8428c4c7324924a0a64df0b914aef`.
+- Independent verification record:
+  `artifacts/gdn-mqar-single-baseline-p007-20260801t064410z/complete-failure-evidence-verification.json`,
+  SHA-256
+  `3c8ae796a26795ed91b00d5bef33ae7c89e4591219cd210caf1c9d9f1c66da92`.
+  A safe member-by-member extraction under `verify-complete.n7Nwuw` verified
+  `86` unique members (`73` regular, `13` directories), all `72` inventory
+  entries, byte-identical source copies, two byte-identical 19-file launcher
+  trees, the terminal binding, and zero links, special members, forbidden
+  model/data/checkpoint files, or credential-like JSON keys.
 
-The allocation/admission evidence and allocation controller paths exist; no
-formal controller, remote P007 suite, remote run-artifact directory, or
-terminal archive exists. P006 evidence is not copied into P007. Model, data,
-cache, checkpoint, optimizer, and weight files will never be uploaded to
-GitHub or included in the safe evidence archive.
+The earlier `evidence.tar.gz` is preserved but explicitly superseded: it is a
+valid 71-source-file subset that omitted the one-shot allocation controller.
+It is not the complete P007 archive and is not cited as terminal closure.
+
+The remote P007 artifact root and launcher existed and were pulled. The remote
+suite, Python exact-test gate control/JUnit result, preflight, init, pre-capture
+admission, clock bundle/controller, formal start, baseline worker, training,
+model, cache, data, checkpoint, optimizer, metric, and score artifacts do not
+exist. P006 evidence is not copied into P007, and no model/data/checkpoint
+content is included in the archive or uploaded to GitHub.
 
 ## 7. Results
 
@@ -795,24 +847,49 @@ placeholder resource metadata. The same new request then passed the sole
 strict initial admission at exact A100 with 13,459 seconds remaining, and the
 receipt-owned read-only query bound GPU UUID
 `GPU-1522da54-4d66-ddda-298e-422ca5bb6516`, host `itcqig41q4gj-0`, and boot ID
-`08d861e6-ce7b-4fe8-ba78-de529efd1b31`. No remote path, source checkout,
-launcher upload, formal worker, metric, or threshold comparison exists.
+`08d861e6-ce7b-4fe8-ba78-de529efd1b31`. The clean detached formal-source
+checkout and exact 19-file launcher upload then completed with valid operation
+receipts.
+
+The sole `linux-exact-test-start` was consumed at
+`2026-08-01T07:37:44Z`. The helper's remote exec returned exit code `1` with:
+
+`durable linux exact test gate: detached supervisor retained a controlling terminal`
+
+Accordingly, no operation receipt was written. The envelope worker later
+recorded `durable linux exact test gate: starter did not publish start.json
+within five seconds`, `gate.exit=125`, and terminal state `failed` with reason
+`detached-worker-aborted-before-complete` at `2026-08-01T07:37:50Z`.
+`worker_pid=234` and `gate_pid=0`; the read-only audit found no residual
+matching process. The Python gate, pytest, JUnit, and exact `53 passed / 0
+skipped` verifier never ran.
+
+No GDN baseline worker or formal training ran. Overall accuracy, visual
+compatibility, final KV256 accuracy, and all three frozen thresholds were not
+evaluated. This is an operational control-path failure, not a model result.
 
 ## 8. Official comparison
 
-Pending. No result from P001–P006 is carried forward or treated as P007
-evidence. Until P007 completes validly, reproduced accuracy and delta remain
+No numerical comparison with the official Zoology GDN point is valid because
+P007 produced no formal baseline metric. No result from P001–P006 is carried
+forward or treated as P007 evidence. Reproduced accuracy and delta remain
 blank.
 
 ## 9. Decision and reusable lesson
 
-In progress after verified initial admission; the sole allocation restart and
-initial admission attempt are consumed. A complete valid result is strong only
-if overall final accuracy is at least `0.98` and final KV256 accuracy is at
-least `0.88`; only that result
-may receive an `exp/score-*` tag. Overall `0.96` to below `0.98` is visual-only;
-a lower complete result is negative. Any failed gate, incomplete result, or
-timeout is terminal failed and is never retried.
+P007 is terminal `failed`, unretried, and must never be restarted, admitted,
+tested, initialized, captured, or launched again under this run ID. The
+scientific GDN hypothesis is neither supported nor rejected. There is no score
+and no `exp/score-*` or archive tag is permitted.
 
-This is a reproduction study, not a submission. Section 9 will be finalized
-after the single P007 run reaches a terminal state.
+The reusable operational lesson is limited to the observed mechanism. Under
+the actual AIStation helper PTY transport, the detached supervisor still had a
+controlling terminal, so the starter rejected it before publishing
+`start.json`; the worker then terminated without a gate PID. A locally tested
+`setsid`/detached envelope is therefore not proven under the production helper
+transport. Any future separately approved run needs a new operational-control
+commit and a production-transport regression that proves no controlling TTY,
+successful start publication, process quiescence, and exact `53 / 0` closure.
+That lesson is not permission to retry or bypass P007.
+
+This is a reproduction study, not a submission.
