@@ -4,7 +4,7 @@
 
 - Plan: `P-BASELINE-006`
 - Run: `gdn-mqar-single-baseline-durable-20260731t120840z`
-- State: `approved / allocation Pending`
+- State: `failed / initial admission rejected before probe`
 - Proposed UTC: `2026-07-31T12:08:40Z`
 - Approved UTC: `2026-07-31T14:13:12Z`
 - Approval: the user explicitly authorized replacing the expired GPU2
@@ -20,15 +20,17 @@
   `2026-08-01T03:44:38Z`; no intermediate status was captured, so whether it
   briefly became Running is unknown, but it was never admitted, probed, or
   accessed through SSH
-- Current GPU2 replacement request:
-  `08a8c186-788c-42dc-b899-e4f645d05c61`, `Pending`, opened at
-  `2026-08-01T03:45:45Z` under the user's standing same-row reopen
-  authorization; no probe or SSH has been attempted
-- Monitoring diagnosis: the existing
-  `run-zoology-gpu2-single-baseline` heartbeat was found `PAUSED`, explaining
-  why no intermediate status was captured; it must be updated to this P006
-  contract and reactivated only after this ledger transition is
-  GitHub-verified
+- Final GPU2 replacement request:
+  `08a8c186-788c-42dc-b899-e4f645d05c61`, opened at
+  `2026-08-01T03:45:45Z`. Fifty-two captured status responses remained
+  `Pending`; at `2026-08-01T05:50:35Z` the request reported `Running`,
+  `remainTime=14334`, and `resource=GPU:1`.
+- Initial admission outcome: the frozen gate captured a second unchanged
+  helper status at `2026-08-01T05:51:56Z`, with `remainTime=14253` and the
+  same reported `resource=GPU:1`. That string differed from the frozen exact
+  `NVIDIA-A100-SXM4-80GB:1` resource contract, so the sole initial admission
+  attempt exited 1 before probe, SSH/helper exec, CUDA inspection, identity
+  capture, or remote mutation.
 - Remote root: `/huyang2/zoology`
 - Formal source SHA:
   `13f880b5fe61619a1006ef33610de69fbabaaec1`
@@ -720,24 +722,80 @@ be uploaded to GitHub.
 - Local open response for the current replacement:
   `artifacts/admission-gdn-mqar-single-baseline-durable-20260731t120840z/open-0002.json`,
   SHA-256 `c7e0061f1203b440d3c9c62d9d2248cdb39d8cd4cb710c0cb843db71e930ef3b`
-- Formal controller, suite, worker, training, model, and score artifacts: not
-  created
+- The 52 no-clobber responses
+  `status-discovery-0003.json` through `status-discovery-0054.json` are
+  byte-identical `Pending` observations, each with SHA-256
+  `b8135bcaf5c81cd120e607a874b9b9341d55e36d6d476ccf08bd9b54ce36ff6c`.
+- Final discovery response:
+  `artifacts/admission-gdn-mqar-single-baseline-durable-20260731t120840z/status-discovery-0055.json`,
+  SHA-256 `1613af7cbc6725eb370425b4897fd010a3e146cb3746571e6052bea5f693f4d7`.
+  It binds the ledgered request, `Running`, the unchanged image,
+  `resource=GPU:1`, and `remainTime=14334`.
+- Gate-owned initial status response:
+  `artifacts/admission-gdn-mqar-single-baseline-durable-20260731t120840z/status-running.json`,
+  SHA-256 `7933984b51141d50bf96d6df842f8b31ea74f332b5744d2df7766bcb559c5b39`.
+  It binds the same request/image/state and reports `resource=GPU:1` and
+  `remainTime=14253`.
+- Terminal admission record SHA-256:
+  `4893f9661d115ebc5d9b77d3df1200d8a6de4d8bd73548378a1e4a3bea0cce01`.
+- Complete local failure-evidence archive:
+  `artifacts/gdn-mqar-single-baseline-durable-20260731t120840z/gdn-mqar-single-baseline-durable-20260731t120840z-complete-failure-evidence.tar.gz`.
+- Complete archive SHA-256:
+  `667fb79f370839c684852d014c9c558d19dd27a9c756f24a0b1d7ab0279d0387`.
+- Archive sidecar SHA-256:
+  `673d9d3806cc6ed8926e59d0acedd25853cf76a3e8c58346fb017e257ee78160`.
+- Complete inventory SHA-256:
+  `66144e2db8f8ab544b39c99e0462520bd7125ed5e4899ce74c62c2bd66c2b511`.
+- Source allocation/admission files: `58`; inventory-hashed evidence files:
+  `60`; archive regular files including the inventory: `61`.
+- Independent verification record SHA-256:
+  `665a30e9b0292ad8c19f4576c5ca5e670699f36b5396c4c861f117e15847b752`.
+- Safe local extraction:
+  `artifacts/gdn-mqar-single-baseline-durable-20260731t120840z/verify.z69lsb5t`.
+
+Independent verification checked the archive sidecar, safe and unique member
+paths, regular-file-only membership, the complete sorted inventory, all 60
+inventory hashes, all 58 byte-for-byte source copies, the request/resource
+binding, and absence of credential-like content in the raw JSON. It found no
+links, special members, unsafe paths, duplicates, hash drift, or copy drift.
+
+The gate validates the status resource before invoking probe. Accordingly,
+`probe-running.json`, `identity-running.json`, `observation-initial.json`, all
+operation receipts, pre-capture evidence, and clock-binding evidence are
+absent. No remote evidence existed to pull: the rejection occurred before any
+probe, SSH/helper exec, or remote access. Formal controller, suite, worker,
+training, model, checkpoint, metric, and score artifacts were not created.
 
 ## 7. Results
 
-Not run. No formal GDN metric exists for P006.
+The sole strict initial admission command exited 1 with the exact error:
 
-## 8. Conclusions
+`aistation admission gate: AIStation GPU2 resource differs from the frozen A100 resource`
 
-The first replacement reached Halt before admission without any formal work;
-its unobserved intermediate state is unknown. It was replaced under the
-standing same-row reopen authorization, and the current request is Pending.
-The prior heartbeat was found paused and must be updated and reactivated after
-this ledger transition is GitHub-verified. P006 is now wait-only: do not probe,
-SSH, open again, or launch while this request is active. A fresh strict status
-must report Running, exact A100, and the 13,200-second floor before admission
-can begin.
+This records a mismatch in the helper's reported resource string; it does not
+assert what physical hardware was installed. The stop occurred before probe,
+so the contract deliberately did not inspect CUDA or infer A100 identity from
+the logical row name.
 
-## 9. Submission record
+No formal GDN training ran. Overall accuracy, visual compatibility, final
+KV256 accuracy, and all three frozen thresholds were not evaluated.
 
-Not applicable; this is a reproduction study.
+## 8. Official comparison
+
+No numerical comparison with the official Zoology GDN point is valid because
+P006 produced no formal baseline metric. The official visual reading remains
+approximately `0.99`; reproduced accuracy and delta remain blank.
+
+## 9. Decision and reusable lesson
+
+P006 is terminal `failed`, unretried, and must never be probed, initialized,
+captured, or launched under this run ID. The scientific hypothesis is neither
+supported nor rejected.
+
+The reusable operational lesson is that `Running` establishes scheduler state,
+not the frozen accelerator contract. Never infer exact A100 identity from the
+logical row name or from a generic GPU count. Enforce the exact reported
+resource before probe, and stop before remote access when it differs.
+
+This is a reproduction study, not a submission. There is no score and no
+`exp/score-*` or archive tag is permitted by the P006 contract.
