@@ -4,7 +4,7 @@
 
 - Plan: `P-BASELINE-008`
 - Run: `gdn-mqar-single-baseline-p008-20260801t092653z`
-- State: `approved / fresh GPU2 request Pending / restart consumed`
+- State: `failed / Halt before admission / no retry`
 - Proposed UTC: `2026-08-01T09:26:53Z`
 - Approved UTC: `2026-08-01T09:26:53Z`
 - Approval: after P007 was closed as a terminal pre-pytest control failure, the
@@ -42,6 +42,7 @@
 - Replacement request: `09747b2f-6916-4813-ab33-7aebb5ce3b3b`, returned
   `Pending` with placeholder `resource=GPU:1`, `remainTime=-`, and the unchanged
   image
+- Ended UTC: `2026-08-02T05:11:06Z`
 
 The report and run ID were absent and accepted by both production run-ID
 validators before this record was created. The approval ledger was pushed and
@@ -49,9 +50,14 @@ GitHub-verified at exact commit `4aab2526d41862910c1b307e46396c9c2f56cbe8`.
 The one authorized replacement then preserved the predecessor as Running on
 the exact A100 with `remainTime=5264`, consumed the sole restart, and returned
 the new Pending request above with the unchanged image and exact pause/resume
-actions. No remote P008 path, suite, controller, capture, worker, training
-process, model, metric, or score exists. This allocation transition must be
-GitHub-verified before any further status or admission action.
+actions. That allocation transition was pushed and GitHub-verified at exact
+commit `d6e39914f95dc6e6978ae47649fe089045f48fd0`. A subsequent no-clobber
+status still found the request Pending. The next no-clobber status, observed at
+`2026-08-02T05:11:06Z`, bound the same request and image but reported `Halt`,
+placeholder `resource=GPU:1`, and `remainTime=-292`. The predeclared contract
+makes Halt before admission terminal and forbids a second restart. No remote
+P008 path, admission, suite, controller, capture, worker, training process,
+model, metric, or score was created or observed by this workflow.
 
 ## 2. Hypothesis
 
@@ -128,57 +134,39 @@ valid negative; any incomplete, invalid, or timed-out run is terminal failed.
   bound it as Running on exact `NVIDIA-A100-SXM4-80GB:1` with
   `remainTime=5264`; the subsequent exact pause/resume replacement retired it
 - Current request: `09747b2f-6916-4813-ab33-7aebb5ce3b3b`
-- Current request disposition: `Pending`, placeholder `resource=GPU:1`,
-  `remainTime=-`; image unchanged; the single P008 restart is consumed
+- Current request disposition: `Halt`, placeholder `resource=GPU:1`,
+  `remainTime=-292`; image unchanged; the single P008 restart is consumed and
+  the run is terminal failed before admission
 
-The new request ID, image, and Pending state are bound above. GPU UUID, host,
-boot ID, initial lease, and admission evidence remain pending. Pending,
-Queuing, and ImagePulling remain status-only. Running state is not admission:
-the frozen initial gate must bind the ledgered request, exact resource,
-helper-driven probe/SSH/CUDA access, stable identity, and at least 13,200
-seconds before remote mutation.
+The request never reached a captured strict initial admission. There is no GPU
+UUID, host, boot ID, admitted lease, probe, SSH, CUDA identity, or remote
+mutation evidence. Sparse polling cannot prove whether AIStation briefly
+scheduled the request between the saved Pending and Halt observations; it can
+prove that this workflow never admitted or used it. The scientific hypothesis
+therefore remains untested.
 
 ## 5. Planned commands and evidence
 
 1. **Complete.** The P008 approval ledger is GitHub-verified at exact commit
    `4aab2526d41862910c1b307e46396c9c2f56cbe8`.
-2. **Complete, pending this ledger commit's GitHub verification.** One fresh
+2. **Complete and GitHub-verified.** One fresh
    no-clobber literal-GPU2 status bound predecessor request `b0411955...` as
    Running on the exact A100 with 5,264 seconds. The sole restart returned new
    Pending request `09747b2f...`, unchanged image, placeholder `GPU:1`, and
-   exact pause/resume actions. No second restart is allowed.
-3. Poll only literal GPU2. Pending, Queuing, or ImagePulling ends the turn.
-   Halt before admission is terminal P008 allocation failure; there is no
-   second restart. When Running, enter only through the frozen initial
-   admission capture/verify and require the exact A100 plus at least 13,200
-   seconds. After admission, bind the request/GPU/host/boot/lease evidence,
-   mark P008 `in-progress`, and GitHub-verify that ledger transition before
-   remote setup.
-4. On `/huyang2/zoology`, fetch only from GitHub and clean-checkout detached
-   formal source `13f880...`. Reuse only repo-local `.venv`, caches, wheels,
-   artifacts, models, and runs. Upload the exact 19-file launcher assembled
-   from operational commit `b69aeb8...`; every advancing exec/push is owned by
-   an exclusive `run-operation` receipt.
-5. Start the repaired durable Linux exact-test envelope once through the real
-   helper PTY. Before any suite, preflight, init, capture, or training path is
-   created, require `start.json` schema 2 to record a nonzero inherited
-   transport TTY and the claimed Bash supervisor as `PID=PGID=SID` with
-   `tty_nr=0`. After the helper transport closes, require terminal completion,
-   transport/worker/gate quiescence, exact hash closure, and exactly
-   `53 passed / 0 skipped / 0 failed / 0 errors / 0 disabled`. This one gate is
-   also the production-PTY regression; it is never repeated or bypassed.
-6. Only after exact 53/0, run audited setup/check/cache/real-A100 GDN smoke via
-   durable preflight-v2, then durable init-baseline and their sole verifiers.
-   Require the selected suite cell to remain exactly index 5.
-7. Require at least 12,120 seconds before capture. Perform one formal clock
-   capture with at least 12,060 seconds and a bracket at most 15 seconds; bind,
-   verify, upload, and remotely validate the seven-file bundle. Make exactly
-   one durable formal start within the 60-second publication-age limit and
-   launch only the single index-5 worker.
-8. Monitoring after launch is read-only. At terminal state, validate and safely
-   archive allowed evidence without model/data/checkpoints, pull it, verify it
-   independently, and update Sections 6-9, `plans.md`, resource allocation,
-   and `leaderboard.csv` without overstating the result.
+   exact pause/resume actions. Commit `d6e3991...` binds this transition. No
+   second restart is allowed.
+3. **Terminal.** Status `0002` preserved Pending without actions. Status `0003`
+   bound the same request and image as Halt with `remainTime=-292`. Per the
+   frozen contract, P008 stopped without probe, SSH, admission, or restart.
+4. **Not reached.** No remote path, checkout, launcher upload, or operation
+   receipt exists.
+5. **Not reached.** The production-PTY/exact-53 gate was never started.
+6. **Not reached.** No preflight, initialization, or real-A100 smoke exists.
+7. **Not reached.** No formal capture, publication, start, or worker exists.
+8. **Complete locally.** Because no remote path existed, there was nothing to
+   pull. The complete allowed local evidence was inventoried, safely archived,
+   extracted under a separate verification directory, and checked
+   member-by-member before the terminal ledger update.
 
 Kill criteria are fail-closed: helper/control hash drift; wrong row, image,
 request, resource, host, boot ID, or GPU; ambiguous/multiple active requests;
@@ -208,25 +196,55 @@ Local no-clobber allocation evidence is under
   `628aefaa2de3eb09ad5e6e1397e04280650e01847da2d9192566137405230226`
 - No-clobber restart-controller SHA-256:
   `aff68bba18d6deccd85cbec522ab7b38074a47d98f9e2ce88d76925dbc4fae7d`
+- First post-ledger Pending status SHA-256:
+  `b09979dc580fef831c6668a67508b949985a69ecfaff4f014976346d01c6ceb9`
+- Terminal Halt status SHA-256:
+  `2ca7d98bfa0d2e01d2e5a27464a2b27090c43fc0467c3949b3f4f6cc2c3c7833`
+- Complete safe inventory:
+  `artifacts/gdn-mqar-single-baseline-p008-20260801t092653z/complete-failure-evidence-inventory.tsv`,
+  SHA-256
+  `fc16ccde117e99de0a7faec7913855c27f21d356c0522724aba45fa3daffbe5f`;
+  it closes over `14` source files: four one-shot local controllers and ten
+  local allocation/status evidence files
+- Complete safe archive:
+  `artifacts/gdn-mqar-single-baseline-p008-20260801t092653z/gdn-mqar-single-baseline-p008-20260801t092653z-complete-failure-evidence.tar.gz`,
+  `7,893` bytes, SHA-256
+  `718984849f01b39d150c1e59b00443d931f14ac606202208a5bff758e2cc82a2`;
+  sidecar SHA-256
+  `3f9faed34bccffa08a0193a23b2318f78d8868fd843de7590be48e57eac31b7f`
+- Independent verification record:
+  `artifacts/gdn-mqar-single-baseline-p008-20260801t092653z/complete-failure-evidence-verification.json`,
+  SHA-256
+  `27d14da4696b02e9f7cd82d46b08e4b31477253eb90fd66b1c0a01fcf624eb64`;
+  the extracted archive has `15` regular files and `3` directories with zero
+  links, special members, forbidden model/data/checkpoint paths, or
+  credential-like fields, and all `14` inventory entries matched exactly
 
-No remote P008 path exists. Allowed future evidence excludes model weights,
-datasets, caches, checkpoints, and secrets.
+No remote P008 path was created or observed by this workflow, so no remote pull
+was applicable. The archive contains no model weights, datasets, caches,
+checkpoints, or secrets.
 
 ## 7. Results
 
-Pending. No worker, training metric, model, or score exists.
+Terminal failed before admission. No worker, training metric, model, or score
+exists. This is an allocation failure, not a scientific result.
 
 ## 8. Official comparison
 
-Pending. The official visual reference remains approximately 0.99 for the
-matching state-size point; no reproduced value exists yet.
+No reproduced value exists, so no delta can be computed. The official visual
+reference remains approximately 0.99 for the matching state-size point and is
+not compared to an allocation failure.
 
 ## 9. Decision and reusable lesson
 
-The one fresh GPU2 allocation replacement completed and is consumed; the new
-ledgered request is Pending. After this transition is GitHub-verified, proceed
-status-only until strict initial admission is possible, then execute the one
-unchanged formal cell only after the new worker-bound envelope passes its one
-production-PTY/exact-53 gate. P007 remains immutable failed. No conclusion
-about Gated DeltaNet accuracy is permitted until P008 reaches a complete
-validated terminal result.
+P008 is terminal `failed / Halt before admission`, unretried, and must never be
+restarted or reopened. The one fresh allocation returned Pending, was still
+Pending at the next saved status, and was Halt with `remainTime=-292` at the
+following saved status. This workflow never obtained a strict admission and
+never touched the remote environment. The repaired production-PTY control was
+therefore not exercised, and the unchanged Gated DeltaNet accuracy hypothesis
+remains untested. Sparse polling lost the only usable opportunity if the
+request ever became Running: future separately approved allocation attempts
+must have an active watcher that can immediately perform the GitHub-verified
+strict admission while the lease is fresh. That is an operational lesson, not
+permission to retry P008 or alter its science.
