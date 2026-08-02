@@ -41,7 +41,7 @@
 - Watcher prompt SHA-256:
   `b615ae0938fca8120633108d9c92796c532d3d2f15813503c53374aacb95b5b6`
 - One-shot open controller SHA-256:
-  `e63a30d3d91a4c0e6a2fdc13167c3f762654ba9474973175ea817e316565b9d8`
+  `67d20c527bd3e5c886c43fa806046bc77e319e2beb6d8ecc18bfcfc0b7b5bdb3`
 - Status-only watcher controller SHA-256:
   `4ef35323382781af8ad7eb4279e11ab1131c3c2d8e637dddb9c82225a981ec5d`
 - Frozen image:

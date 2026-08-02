@@ -216,8 +216,10 @@ def verify_approval_and_automation(
         automation.get("target_thread_id") == TARGET_THREAD_ID,
         "automation target thread mismatch",
     )
+    prompt_text = WATCHER_PROMPT.read_text(encoding="utf-8")
+    require(prompt_text.endswith("\n"), "watcher prompt lacks its canonical newline")
     require(
-        automation.get("prompt") == WATCHER_PROMPT.read_text(encoding="utf-8"),
+        automation.get("prompt") == prompt_text[:-1],
         "automation prompt content mismatch",
     )
 
