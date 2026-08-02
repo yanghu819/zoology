@@ -1,0 +1,35 @@
+{
+  "actions": [
+    {
+      "action": "start_requested",
+      "previousStatus": "Halt",
+      "target": "GPU2"
+    }
+  ],
+  "approval_commit": "fcc4afc1e9c8eb397f85335e72d9f778abcd836e",
+  "approval_tree": "b1485aad203c9f96d90dad4f6fd5861658b86144",
+  "attempt_sha256": "d30e07d6c02d590628e0802d5aec72aa2079742a818a9469257557cf5f3acfb2",
+  "automation_config_sha256": "84f7406cede086a527e31922740c0bd5c60872fdc78f83ea6a85a94b0fdb4616",
+  "automation_id": "run-zoology-gpu2-single-baseline",
+  "command": "open",
+  "controller_sha256": "67d20c527bd3e5c886c43fa806046bc77e319e2beb6d8ecc18bfcfc0b7b5bdb3",
+  "helper_sha256": "628aefaa2de3eb09ad5e6e1397e04280650e01847da2d9192566137405230226",
+  "image": "192.168.108.1:5000/pytorch/ptv-qianliujia:python310_torch2.7",
+  "new_remaining_time": "-",
+  "new_resource": "GPU:1",
+  "new_workspace_id": "7be58af7-4b46-4618-8c02-76bfd4acd950",
+  "new_workspace_status": "Pending",
+  "old_workspace_id": "09747b2f-6916-4813-ab33-7aebb5ce3b3b",
+  "open_consumed": true,
+  "open_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "open_stdout_sha256": "7a21ef18fb2a52b073f03c1d673eacff7c9ad44efc7fdb7d88f56a5dc1d089cf",
+  "recorded_unix": 1785664480,
+  "recorded_utc": "2026-08-02T09:54:40Z",
+  "run_id": "gdn-mqar-single-baseline-p009-20260802t090131z",
+  "schema_version": 1,
+  "state": "complete",
+  "status_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "status_stdout_sha256": "2ca7d98bfa0d2e01d2e5a27464a2b27090c43fc0467c3949b3f4f6cc2c3c7833",
+  "target": "GPU2",
+  "watcher_activation_sha256": "efb695bc35fb59f6f11f89a9e6c383f6c02fcedfad19797f577a9fbcf30ef3aa"
+}

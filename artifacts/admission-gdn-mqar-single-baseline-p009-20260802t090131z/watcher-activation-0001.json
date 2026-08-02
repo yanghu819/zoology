@@ -1,0 +1,16 @@
+{
+  "approval_commit": "fcc4afc1e9c8eb397f85335e72d9f778abcd836e",
+  "approval_tree": "b1485aad203c9f96d90dad4f6fd5861658b86144",
+  "automation_config_sha256": "84f7406cede086a527e31922740c0bd5c60872fdc78f83ea6a85a94b0fdb4616",
+  "automation_id": "run-zoology-gpu2-single-baseline",
+  "automation_status": "ACTIVE",
+  "automation_updated_at": 1785664043694,
+  "controller_sha256": "67d20c527bd3e5c886c43fa806046bc77e319e2beb6d8ecc18bfcfc0b7b5bdb3",
+  "helper_sha256": "628aefaa2de3eb09ad5e6e1397e04280650e01847da2d9192566137405230226",
+  "prompt_sha256": "b615ae0938fca8120633108d9c92796c532d3d2f15813503c53374aacb95b5b6",
+  "run_id": "gdn-mqar-single-baseline-p009-20260802t090131z",
+  "schema_version": 1,
+  "started_unix": 1785664474,
+  "started_utc": "2026-08-02T09:54:34Z",
+  "state": "active_before_allocation"
+}

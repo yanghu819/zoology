@@ -1,0 +1,21 @@
+{
+  "command": "open",
+  "ok": true,
+  "targets": [
+    {
+      "wpName": "GPU2",
+      "wpId": "7be58af7-4b46-4618-8c02-76bfd4acd950",
+      "wpStatus": "Pending",
+      "image": "192.168.108.1:5000/pytorch/ptv-qianliujia:python310_torch2.7",
+      "resource": "GPU:1",
+      "remainTime": "-"
+    }
+  ],
+  "actions": [
+    {
+      "target": "GPU2",
+      "action": "start_requested",
+      "previousStatus": "Halt"
+    }
+  ]
+}

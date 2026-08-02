@@ -4,8 +4,8 @@
 
 - Plan: `P-BASELINE-009`
 - Run: `gdn-mqar-single-baseline-p009-20260802t090131z`
-- State: `approved / watcher activation and fresh allocation pending`
-- Watcher phase: `armed-unallocated`
+- State: `approved / allocation last observed Pending; admission not begun`
+- Watcher phase: `monitoring`
 - Proposed UTC: `2026-08-02T09:01:31Z`
 - Approved UTC: `2026-08-02T09:01:31Z`
 - Approval: after P008 was closed as terminal failed and the assistant explicitly
@@ -44,6 +44,15 @@
   `67d20c527bd3e5c886c43fa806046bc77e319e2beb6d8ecc18bfcfc0b7b5bdb3`
 - Status-only watcher controller SHA-256:
   `4ef35323382781af8ad7eb4279e11ab1131c3c2d8e637dddb9c82225a981ec5d`
+- GitHub-verified allocation-control approval commit:
+  `fcc4afc1e9c8eb397f85335e72d9f778abcd836e`
+- GitHub-verified allocation-control approval tree:
+  `b1485aad203c9f96d90dad4f6fd5861658b86144`
+- Active automation config SHA-256 at allocation:
+  `84f7406cede086a527e31922740c0bd5c60872fdc78f83ea6a85a94b0fdb4616`
+- Active automation `updated_at`: Unix milliseconds `1785664043694`
+- Allocation attempt UTC/Unix: `2026-08-02T09:54:34Z` / `1785664474`
+- Allocation completion UTC/Unix: `2026-08-02T09:54:40Z` / `1785664480`
 - Frozen image:
   `192.168.108.1:5000/pytorch/ptv-qianliujia:python310_torch2.7`
 - Local operational-control verification inherited from the frozen operational
@@ -52,12 +61,12 @@
 
 Both production run-ID validators accepted the all-lowercase run ID, and its
 report, admission directory, artifact root, and run directory were absent
-before this record was created. This record is not authority for any external
-action until its commit, tree, and changed blobs are pushed and independently
-verified from GitHub. The existing heartbeat remains paused with a stale P006
-prompt until that verification. After verification, the same automation ID is
-atomically updated to the exact frozen P009 prompt and activated before any
-fresh allocation status or open action.
+before this record was created. The approval and canonical prompt comparison
+fix were pushed and independently verified at the commit/tree above. The same
+heartbeat automation was then atomically updated to the exact frozen P009
+prompt and activated at one-minute cadence before any allocation status or
+open action. Its exact config SHA-256 was bound into the immutable activation,
+attempt, and completion receipts.
 
 ## 2. Hypothesis
 
@@ -130,17 +139,21 @@ valid negative; any incomplete, invalid, or timed-out run is terminal failed.
 - Maximum capture-to-publication age: `60` seconds
 - Predecessor request: `09747b2f-6916-4813-ab33-7aebb5ce3b3b`
 - Predecessor disposition: terminal P008 `Halt`; immutable prior evidence only
-- P009 request: not created
-- P009 GPU UUID, host, boot ID, resource, and lease: not observed
+- P009 request: `7be58af7-4b46-4618-8c02-76bfd4acd950`
+- Allocation response: `Pending`, placeholder `resource=GPU:1`,
+  `remainTime=-`, unchanged frozen image, recorded
+  `2026-08-02T09:54:40Z` / Unix `1785664480`
+- P009 GPU UUID, host, boot ID, exact accelerator resource, and usable lease:
+  not admitted or observed
 
-P009 may consume exactly one `open GPU2` action, never `restart`, and only after
-the active watcher obtains a fresh unchanged status that still binds the
-predecessor request as Halt. The open controller writes an exclusive attempt
-receipt before the call, so any timeout or ambiguous response consumes the
-sole allocation action. It requires a new request ID, unchanged image, exact
-`start_requested` from `Halt`, and no more than one active request. The new
-allocation transition must be committed, pushed, and GitHub-verified before a
-subsequent status or admission.
+P009 consumed exactly one `open GPU2` action, never `restart`, after the active
+watcher was verified and the fresh unchanged status still bound the predecessor
+request as Halt with `remainTime=-292`. The controller wrote its exclusive
+attempt receipt before the call and the response returned the new request above,
+the unchanged image, exact `start_requested` from `Halt`, and one Pending active
+request. This allocation action is permanently consumed. The transition must be
+committed, pushed, and GitHub-verified before any subsequent status or admission.
+No further `open`, `restart`, or `stop` action is authorized for P009.
 
 Pending, Queuing, and ImagePulling are status-only. Running enters exactly one
 `repro.aistation_admission_gate` phase-initial capture and verify; neither the
@@ -153,17 +166,17 @@ allocation.
 
 ## 5. Planned commands and evidence
 
-1. **Approval ledger.** Commit this report, the P009 plans row, the exact
+1. **Approval ledger (complete).** Commit this report, the P009 plans row, the exact
   watcher prompt, and both no-clobber allocation controllers. Push and verify
    the GitHub branch ref, commit, tree, parent, and every changed blob. No
    AIStation call is allowed before that verification.
-2. **Watcher before allocation.** Atomically update the existing
+2. **Watcher before allocation (complete).** Atomically update the existing
    `run-zoology-gpu2-single-baseline` heartbeat from its paused stale P006
    prompt to the exact frozen P009 prompt and `ACTIVE`, preserving the
    one-minute cadence and target thread. Verify the automation view and config
    hash. While GitHub says `armed-unallocated`, the active heartbeat makes zero
    AIStation calls and is permanently forbidden from open/restart/stop.
-3. **One allocation action.** The main agent exclusively runs the frozen open
+3. **One allocation action (complete).** The main agent exclusively runs the frozen open
    controller after proving the watcher ACTIVE. The controller first writes
    `watcher-activation-0001.json` with the automation config hash, then
    validates helper hash before and
@@ -172,7 +185,7 @@ allocation.
    exactly once. It requires a new request ID and exact start action. Raw
    stdout/stderr and success or failure receipts are exclusive and fsynced.
    Any failure is terminal; never call open or restart again.
-4. **Allocation publication.** After the controller releases its operation
+4. **Allocation publication (current).** After the controller releases its operation
    lock, the main agent atomically reacquires the same lock before any ledger
    write; if busy, it makes zero writes and yields completely to heartbeat
    recovery. The sole lock owner, without another AIStation call, updates this
@@ -242,16 +255,34 @@ Prepared GitHub-safe controls:
   `artifacts/gdn-mqar-single-baseline-p009-20260802t090131z/allocation-control/open_gpu2_once.py`
 - Status-only controller:
   `artifacts/gdn-mqar-single-baseline-p009-20260802t090131z/allocation-control/status_gpu2_once.py`
-- Future no-clobber allocation/admission evidence:
-  `artifacts/admission-gdn-mqar-single-baseline-p009-20260802t090131z/`
+- Immutable watcher activation:
+  `watcher-activation-0001.json`, SHA-256
+  `efb695bc35fb59f6f11f89a9e6c383f6c02fcedfad19797f577a9fbcf30ef3aa`
+- Fresh predecessor status stdout/stderr: `status-pre-open-0001.json` SHA-256
+  `2ca7d98bfa0d2e01d2e5a27464a2b27090c43fc0467c3949b3f4f6cc2c3c7833`
+  and empty stderr SHA-256
+  `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`
+- Exclusive open attempt: `open-0001.attempt.json`, SHA-256
+  `d30e07d6c02d590628e0802d5aec72aa2079742a818a9469257557cf5f3acfb2`
+- Open stdout/stderr: `open-0001.json` SHA-256
+  `7a21ef18fb2a52b073f03c1d673eacff7c9ad44efc7fdb7d88f56a5dc1d089cf`
+  and empty stderr SHA-256
+  `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`
+- Complete allocation receipt: `open-0001.receipt.json`, SHA-256
+  `1cf3805dd54ddecf442dec53f51509850a88a8915db72f6ad1febb10b50b0fd5`
 
-No P009 allocation response, remote path, admission, suite, worker, model,
-metric, archive, or score exists yet. Model weights, datasets, caches,
-checkpoints, credentials, and secrets are forbidden from GitHub artifacts.
+All allocation evidence is under
+`artifacts/admission-gdn-mqar-single-baseline-p009-20260802t090131z/` and
+contains seven regular files. No P009 probe, SSH, remote path, admission, suite,
+worker, model, metric, archive, or score exists yet. Model weights, datasets,
+caches, checkpoints, credentials, and secrets are forbidden from GitHub
+artifacts.
 
 ## 7. Results
 
-Pending. The scientific cell has not started and no metric exists.
+Allocation-only state: request `7be58af7-4b46-4618-8c02-76bfd4acd950`
+was last observed Pending with placeholder `GPU:1` in the allocation response;
+the scientific cell has not started and no metric exists.
 
 ## 8. Official comparison
 
@@ -260,10 +291,12 @@ visual reference remains approximately 0.99 for the matching state-size point.
 
 ## 9. Decision and reusable lesson
 
-P009 is approved because the unchanged model hypothesis remains scientifically
-untested and the next intervention is operationally decisive: the watcher is
-established before consuming the only allocation action. This avoids spending
-another lease under sparse polling. If the watcher and strict admission succeed,
-the already-frozen repaired PTY gate and single baseline proceed without design
-changes. If any watcher, allocation, admission, or later gate fails, P009 closes
-terminally and unretried; no result or official comparison is inferred.
+P009 remains approved because the unchanged model hypothesis is scientifically
+untested. The watcher was established before the only allocation action, and
+the new request's last-recorded Pending response plus complete raw evidence are
+now bound for publication.
+After this transition is GitHub-verified, the heartbeat becomes the sole status
+and admission owner. If it catches a usable Running lease, the already-frozen
+repaired PTY gate and single baseline proceed without design changes. If any
+watcher, admission, or later gate fails, P009 closes terminally and unretried;
+no result or official comparison is inferred.
