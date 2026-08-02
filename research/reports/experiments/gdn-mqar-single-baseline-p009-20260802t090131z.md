@@ -4,10 +4,12 @@
 
 - Plan: `P-BASELINE-009`
 - Run: `gdn-mqar-single-baseline-p009-20260802t090131z`
-- State: `approved / allocation last observed Pending; admission not begun`
-- Watcher phase: `monitoring`
+- State: `failed / Running resource mismatch before admission / no retry`
+- Watcher phase: `terminal`
 - Proposed UTC: `2026-08-02T09:01:31Z`
 - Approved UTC: `2026-08-02T09:01:31Z`
+- Ended UTC: `2026-08-02T10:41:29Z` (terminal raw/failure file mtime,
+  Unix `1785667289`)
 - Approval: after P008 was closed as terminal failed and the assistant explicitly
   requested a separate `批准 P009`, the user replied `jixu`; this authorizes
   one separately tracked P009 with unchanged science, one active watcher, and
@@ -48,6 +50,10 @@
   `fcc4afc1e9c8eb397f85335e72d9f778abcd836e`
 - GitHub-verified allocation-control approval tree:
   `b1485aad203c9f96d90dad4f6fd5861658b86144`
+- GitHub-verified allocation publication commit:
+  `ad3a1c9eab1b45e14ac4e74aca9f23e2d6eaefc3`
+- GitHub-verified allocation publication tree:
+  `ebdd0ae43f4f050e65ae5a92792bde22e1ac6ce5`
 - Active automation config SHA-256 at allocation:
   `84f7406cede086a527e31922740c0bd5c60872fdc78f83ea6a85a94b0fdb4616`
 - Active automation `updated_at`: Unix milliseconds `1785664043694`
@@ -143,97 +149,63 @@ valid negative; any incomplete, invalid, or timed-out run is terminal failed.
 - Allocation response: `Pending`, placeholder `resource=GPU:1`,
   `remainTime=-`, unchanged frozen image, recorded
   `2026-08-02T09:54:40Z` / Unix `1785664480`
-- P009 GPU UUID, host, boot ID, exact accelerator resource, and usable lease:
-  not admitted or observed
+- Terminal status: the same request and image reported `Running`,
+  `resource=GPU:1`, `remainTime=14301`, and no actions in sequence `0012`.
+- P009 GPU UUID, host, boot ID, exact accelerator resource, and admitted lease:
+  unavailable because admission never began
 
 P009 consumed exactly one `open GPU2` action, never `restart`, after the active
 watcher was verified and the fresh unchanged status still bound the predecessor
 request as Halt with `remainTime=-292`. The controller wrote its exclusive
 attempt receipt before the call and the response returned the new request above,
 the unchanged image, exact `start_requested` from `Halt`, and one Pending active
-request. This allocation action is permanently consumed. The transition must be
-committed, pushed, and GitHub-verified before any subsequent status or admission.
-No further `open`, `restart`, or `stop` action is authorized for P009.
+request. This allocation action is permanently consumed. Its transition was
+committed, pushed, and GitHub-verified at the allocation publication commit
+above before the first post-ledger status.
 
-Pending, Queuing, and ImagePulling are status-only. Running enters exactly one
-`repro.aistation_admission_gate` phase-initial capture and verify; neither the
-watcher nor the agent may probe or SSH directly. The gate must bind the
-ledgered request, exact A100 string, GPU UUID, host, boot ID, helper-driven
-probe/SSH/CUDA availability, stable identity, and at least 13,200 seconds before
-any remote mutation. A failed gate, insufficient lease, generic resource,
-identity drift, or Halt is terminal P009 failure and never authorizes a second
-allocation.
+Sequences `0002`-`0004` preserved Pending and `0005`-`0011` preserved
+ImagePulling, each with a valid success receipt. Sequence `0012` caught Running
+with 14,301 seconds but returned the generic `GPU:1` resource rather than exact
+`NVIDIA-A100-SXM4-80GB:1`. The frozen status controller wrote a valid failure
+receipt and stopped before invoking `repro.aistation_admission_gate`, probe,
+SSH, CUDA inspection, identity capture, or remote mutation. This says nothing
+about physical hardware identity. Per the fail-closed contract, every further
+status, open, restart, stop, admission, probe, SSH, or remote action under P009
+is forbidden.
 
 ## 5. Planned commands and evidence
 
-1. **Approval ledger (complete).** Commit this report, the P009 plans row, the exact
-  watcher prompt, and both no-clobber allocation controllers. Push and verify
-   the GitHub branch ref, commit, tree, parent, and every changed blob. No
-   AIStation call is allowed before that verification.
-2. **Watcher before allocation (complete).** Atomically update the existing
+1. **Complete and GitHub-verified.** The approval ledger, watcher prompt, and
+   both no-clobber allocation controllers were published at commit
+   `fcc4afc1e9c8eb397f85335e72d9f778abcd836e`.
+2. **Complete.** Atomically update the existing
    `run-zoology-gpu2-single-baseline` heartbeat from its paused stale P006
    prompt to the exact frozen P009 prompt and `ACTIVE`, preserving the
-   one-minute cadence and target thread. Verify the automation view and config
-   hash. While GitHub says `armed-unallocated`, the active heartbeat makes zero
-   AIStation calls and is permanently forbidden from open/restart/stop.
-3. **One allocation action (complete).** The main agent exclusively runs the frozen open
-   controller after proving the watcher ACTIVE. The controller first writes
-   `watcher-activation-0001.json` with the automation config hash, then
-   validates helper hash before and
-   after one fresh `status GPU2`, requires the exact predecessor Halt state and
-   unchanged image, writes `open-0001.attempt.json`, and invokes `open GPU2`
-   exactly once. It requires a new request ID and exact start action. Raw
-   stdout/stderr and success or failure receipts are exclusive and fsynced.
-   Any failure is terminal; never call open or restart again.
-4. **Allocation publication (current).** After the controller releases its operation
-   lock, the main agent atomically reacquires the same lock before any ledger
-   write; if busy, it makes zero writes and yields completely to heartbeat
-   recovery. The sole lock owner, without another AIStation call, updates this
-   report to watcher phase `monitoring`, plans.md, and the resource
-   ledger with old/new request identities, state, image, raw hashes, controller
-   hash, and UTC, and holds the lock through GitHub verification. Commit, push,
-   and GitHub-verify before any next status, then release the lock. A
-   heartbeat finding an unpublished immutable allocation receipt performs only
-   publication recovery with zero new AIStation calls.
-5. **Status or initial admission.** Once the allocation transition is
-   GitHub-verified, run the frozen status-only controller at most once per
-   heartbeat with the next numbered no-clobber sequence and ledgered request.
-   Pending, Queuing, or ImagePulling ends status-only. Halt closes P009. Running
-   immediately enters the single frozen initial admission capture and verify;
-   any exact-resource, request, identity, availability, or 13,200-second failure
-   closes P009 before remote mutation. A status failure receipt or orphan raw
-   status without a valid matching receipt is also terminal and forbids another
-   status sequence.
-6. **In-progress publication.** After successful initial admission, bind the
-   request, exact resource, GPU UUID, host, boot ID, lease, helper/admission
-   evidence, and UTC in the report/plans/resource ledger. Commit, push, and
-   GitHub-verify before any remote setup.
-7. **Exact source and launcher.** Through the admitted helper only, use
-   exclusive run-operation receipts. In `/huyang2/zoology`, fetch from GitHub,
-   clean checkout `--detach` the exact formal source, preserve repo-local
-   `.venv`, caches, artifacts, models, and runs, and upload the exact frozen
-   19-file launcher from operational commit `b69aeb8...`.
-8. **Repaired production PTY gate.** Through the production helper PTY, run the
-   repaired durable Linux envelope. It must publish a correctly detached
-   worker, prove no controlling TTY and exact process identity, run exactly 53
-   tests with 0 skipped, verify its JUnit/terminal/quiescence, and leave no
-   residual process. Any deviation is terminal.
-9. **Preflight and initialization.** Run the audited setup, check, cache,
-   real-A100 GDN smoke, durable preflight plus verifier, and durable
-   init-baseline plus verifier, each with a unique advancing-operation receipt.
-   No live-lease design work or extra experiment is permitted.
-10. **One formal capture and start.** Require a new admission with at least
-    12,120 seconds before capture. Perform one formal clock capture with at
-    least 12,060 seconds and bracket at most 15 seconds. Bind and verify the
-    seven-file bundle, upload and remotely validate it, then make exactly one
-    durable formal start within 60 seconds of publication. Launch only the
-    index-5 worker. No second capture, start, or cell is allowed.
-11. **Read-only monitoring and closeout.** Monitor after launch without
-    mutation. At terminal state validate, safely archive allowed evidence,
-    pull and independently verify it, and update Sections 6-9, plans.md,
-    resource ledger, and leaderboard.csv without overstating. Commit, push,
-    and GitHub-verify. Tag only a complete valid strong result, then pause the
-    same heartbeat.
+   one-minute cadence and target thread. Its exact config hash was bound before
+   allocation.
+3. **Complete.** The main-agent controller freshly rebound the P008 request as
+   Halt, then consumed the sole `open GPU2` and returned the new Pending P009
+   request with an unchanged image and exact `start_requested` action.
+4. **Complete and GitHub-verified.** The allocation transition, old/new request
+   identities, raw hashes, and `monitoring` phase were published at commit
+   `ad3a1c9eab1b45e14ac4e74aca9f23e2d6eaefc3` before any post-ledger status.
+5. **Terminal.** Status sequences `0002`-`0004` were Pending and `0005`-`0011`
+   were ImagePulling. Sequence `0012` bound the same request/image as Running
+   with `remainTime=14301`, but its generic `GPU:1` resource failed the frozen
+   exact-A100 guard. The valid failure receipt consumed monitoring and forbids
+   another sequence or admission.
+6. **Not reached.** No successful initial admission or in-progress publication
+   exists.
+7. **Not reached.** No remote path, checkout, launcher upload, or advancing
+   operation receipt exists.
+8. **Not reached.** The repaired production-PTY/exact-53 gate was never started.
+9. **Not reached.** No setup, preflight, initialization, or real-A100 smoke
+   exists.
+10. **Not reached.** No formal capture, publication, start, or worker exists.
+11. **Complete locally.** No P009 remote path existed, so no remote pull was
+    applicable. All allowed local controls and allocation/status evidence were
+    inventoried, safely archived, independently inspected member-by-member, and
+    bound below before terminal publication.
 
 Kill criteria are fail-closed: watcher not active before allocation; watcher
 lock/cadence/evidence drift; helper, prompt, controller, control, source, or tree
@@ -255,6 +227,8 @@ Prepared GitHub-safe controls:
   `artifacts/gdn-mqar-single-baseline-p009-20260802t090131z/allocation-control/open_gpu2_once.py`
 - Status-only controller:
   `artifacts/gdn-mqar-single-baseline-p009-20260802t090131z/allocation-control/status_gpu2_once.py`
+- Local terminal-archive helper SHA-256:
+  `ede7fd2589108d312569becda37f190238487a026a4da53eecaac7264eca4167`
 - Immutable watcher activation:
   `watcher-activation-0001.json`, SHA-256
   `efb695bc35fb59f6f11f89a9e6c383f6c02fcedfad19797f577a9fbcf30ef3aa`
@@ -270,33 +244,70 @@ Prepared GitHub-safe controls:
   `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`
 - Complete allocation receipt: `open-0001.receipt.json`, SHA-256
   `1cf3805dd54ddecf442dec53f51509850a88a8915db72f6ad1febb10b50b0fd5`
+- Terminal sequence `0012` status stdout SHA-256:
+  `b5be8ed907c46938065608cd242fe0f78329a8ca574ef718654fe9d1a9798bb2`
+- Terminal sequence `0012` stderr is empty with SHA-256:
+  `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`
+- Terminal sequence `0012` failure-receipt SHA-256:
+  `7e01b9cf0a8fcbcc199dc1b8374737cb7445a9ad03e683567631fd077f73e571`;
+  no success receipt exists
+- Complete safe inventory:
+  `artifacts/gdn-mqar-single-baseline-p009-20260802t090131z/complete-failure-evidence-inventory.tsv`,
+  SHA-256
+  `62a7c6ebe8708ed6644e6252fb0a7c2329a8b0a4c32c88ac842916f202bec681`;
+  it closes over `44` source files: three local allocation/archive helpers,
+  one watcher prompt, and forty allocation/status evidence files
+- Complete safe archive:
+  `artifacts/gdn-mqar-single-baseline-p009-20260802t090131z/gdn-mqar-single-baseline-p009-20260802t090131z-complete-failure-evidence.tar.gz`,
+  `18,153` bytes, SHA-256
+  `08fa59c865a7752ff6bcecfffd1e3f43fddbf2418797e350328c7e345500f63c`;
+  sidecar SHA-256
+  `08525d65d9a928cb452715938ece369c51a5f1da674601eb0228d83a48d4b12d`
+- Independent verification record:
+  `artifacts/gdn-mqar-single-baseline-p009-20260802t090131z/complete-failure-evidence-verification.json`,
+  SHA-256
+  `74ccbb759b3f0d3d93b52af19ddcf1fd86729e8be09a506592c8f9bc0ebc1619`;
+  the extracted archive has `45` regular files and `4` directories with zero
+  links, special members, unsafe or duplicate paths, forbidden payloads, or
+  credential-like fields, and all `44` inventory entries matched their source
+  files byte-for-byte
 
 All allocation evidence is under
 `artifacts/admission-gdn-mqar-single-baseline-p009-20260802t090131z/` and
-contains seven regular files. No P009 probe, SSH, remote path, admission, suite,
-worker, model, metric, archive, or score exists yet. Model weights, datasets,
-caches, checkpoints, credentials, and secrets are forbidden from GitHub
-artifacts.
+contains forty regular files. No P009 probe, SSH, admission, identity, remote
+path, suite, Linux gate, preflight, initialization, formal capture/start,
+worker, model, metric, or score exists. Because no remote path existed, no
+remote pull was applicable. The archive contains no model weights, datasets,
+caches, checkpoints, credentials, or secrets.
 
 ## 7. Results
 
-Allocation-only state: request `7be58af7-4b46-4618-8c02-76bfd4acd950`
-was last observed Pending with placeholder `GPU:1` in the allocation response;
-the scientific cell has not started and no metric exists.
+Terminal failed before admission. The active watcher caught request
+`7be58af7-4b46-4618-8c02-76bfd4acd950` as Running with 14,301 seconds, but the
+reported `GPU:1` resource did not equal the frozen exact A100 string. This is an
+operational resource-contract failure, not a statement about physical hardware
+and not a scientific result. No worker, training metric, model, or score exists;
+all accuracy thresholds are unevaluated.
 
 ## 8. Official comparison
 
-Pending. No reproduced value exists, so no delta can be computed. The official
-visual reference remains approximately 0.99 for the matching state-size point.
+No reproduced value exists, so no delta can be computed. The official visual
+reference remains approximately 0.99 for the matching state-size point and is
+not compared to an admission failure.
 
 ## 9. Decision and reusable lesson
 
-P009 remains approved because the unchanged model hypothesis is scientifically
-untested. The watcher was established before the only allocation action, and
-the new request's last-recorded Pending response plus complete raw evidence are
-now bound for publication.
-After this transition is GitHub-verified, the heartbeat becomes the sole status
-and admission owner. If it catches a usable Running lease, the already-frozen
-repaired PTY gate and single baseline proceed without design changes. If any
-watcher, admission, or later gate fails, P009 closes terminally and unretried;
-no result or official comparison is inferred.
+P009 is terminal `failed / Running resource mismatch before admission`,
+unretried, and must never receive another status, allocation, admission, probe,
+SSH, capture, or launch action. The watcher-first intervention did remove the
+P008 ambiguity: it caught Running while 14,301 seconds remained. The exact
+resource contract nevertheless failed before admission, so the repaired PTY
+control and unchanged Gated DeltaNet cell were never exercised and the model
+hypothesis remains untested.
+
+The reusable operational lesson is that active monitoring can catch a lease
+without making a generic Running resource admissible. Exact accelerator
+validation must remain before probe and remote access. This is a reproduction
+study with no score; no P009 result tag, archive tag, or `exp/score-*` tag is
+permitted. The heartbeat may be paused only after this terminal ledger is
+GitHub-verified.
